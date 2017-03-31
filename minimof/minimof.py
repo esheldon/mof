@@ -1,4 +1,10 @@
 from __future__ import print_function
+try:
+    xrange
+except:
+    xrange=range
+    raw_input=input
+
 import numpy
 import ngmix
 
