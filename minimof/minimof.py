@@ -106,7 +106,7 @@ class MiniMOF(dict):
 
         boot = self._get_bootstrapper(obs)
 
-        Tguess=4.0
+        Tguess=1.0
         ppars=self['psf_pars']
 
         # will raise BootPSFFaiure
@@ -120,7 +120,6 @@ class MiniMOF(dict):
                      mconf,
                      prior=self.prior,
                      ntry=mconf['ntry'])
-
 
         fitter=boot.get_max_fitter() 
 
@@ -182,7 +181,13 @@ class MiniMOF(dict):
         get the appropriate bootstrapper
         """
 
-        return ngmix.bootstrap.Bootstrapper(obs)
+        if self['model']=='cm':
+            return ngmix.bootstrap.CompositeBootstrapper(
+                obs,
+                #fracdev_prior=self.fracdev_prior,
+            )
+        else:
+            return ngmix.bootstrap.Bootstrapper(obs)
 
     def _get_prior(self):
         """
