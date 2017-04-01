@@ -11,11 +11,8 @@ import ngmix
 from ngmix.gexceptions import BootPSFFailure, BootGalFailure
 
 class MiniMOF(dict):
-    def __init__(self, config, allobs, Ttol=1.0e-4, maxiter=20, rng=None):
+    def __init__(self, config, allobs, rng=None):
         self.update(config)
-
-        self.Ttol=Ttol
-        self.maxiter=maxiter
 
         if rng is None:
             rng=numpy.random.RandomState()
@@ -47,9 +44,15 @@ class MiniMOF(dict):
 
         self.first=True
 
-        for iter in xrange(self.maxiter):
+        for iter in xrange(self['maxiter']):
             print("iter: %d" % (iter+1))
-            results = self._fit_all()
+
+            if iter > 1:
+                fix_center=False
+            else:
+                fix_center=True
+
+            results = self._fit_all(fix_center=fix_center)
 
             self.first=False
             if results['converged']:
@@ -57,7 +60,7 @@ class MiniMOF(dict):
 
         self._results=results
 
-    def _fit_all(self):
+    def _fit_all(self, fix_center=False):
         """
         run through and fit each observation
         """
@@ -66,7 +69,7 @@ class MiniMOF(dict):
         reslist=[]
         for i in xrange(self.nobj):
 
-            fitter=self._fit_one(i)
+            fitter=self._fit_one(i, fix_center=fix_center)
             res=fitter.get_result()
             reslist.append(res)
 
@@ -89,15 +92,16 @@ class MiniMOF(dict):
             Told = ores['pars'][4]
             Tnew = res['pars'][4]
 
-            Tdiff = abs(Tnew - Told)
-            if Tdiff > self.Ttol:
+            Tdiff = abs(Tnew - Told)/Told
+            print("fracdiff:",Tdiff)
+            if Tdiff > self['Ttol']:
                 converged=False
                 break
 
         self._old_reslist=reslist
         return converged
 
-    def _fit_one(self, i):
+    def _fit_one(self, i, fix_center=False):
         """
         Fit one object, subtracting light from neighbors
 
@@ -121,11 +125,23 @@ class MiniMOF(dict):
         mconf=self['max_pars']
         covconf=mconf['cov']
 
+        if fix_center:
+            self.prior.cen_prior_save=self.prior.cen_prior
+            self.prior.cen_prior=ngmix.priors.CenPrior(
+                0.0,0.0,
+                0.0001,0.0001,
+            )
+
         # will raise BootGalFailure
-        boot.fit_max(self['model'],
-                     mconf,
-                     prior=self.prior,
-                     ntry=mconf['ntry'])
+        boot.fit_max(
+            self['model'],
+            mconf,
+            prior=self.prior,
+            ntry=mconf['ntry'],
+            #center=center,
+        )
+        if fix_center:
+            self.prior.cen_prior=self.prior.cen_prior_save
 
         fitter=boot.get_max_fitter() 
 
@@ -166,10 +182,10 @@ class MiniMOF(dict):
             import images
             images.view_mosaic(
                 [obs.image, im],
-                label1='orig',
-                label2='subtracted',
+                titles=['orig', 'subtracted'],
+                title='object %d' % (i+1),
             )
-            if 'q'==raw_input():
+            if 'q'==raw_input('hit a key: '):
                 stop
 
         nobs = ngmix.Observation(
