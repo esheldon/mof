@@ -138,7 +138,6 @@ class MiniMOF(dict):
             mconf,
             prior=self.prior,
             ntry=mconf['ntry'],
-            #center=center,
         )
         if fix_center:
             self.prior.cen_prior=self.prior.cen_prior_save
