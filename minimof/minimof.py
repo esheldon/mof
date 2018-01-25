@@ -250,6 +250,13 @@ class MiniMOF(dict):
                     rng=self.rng,
                 )
 
+            elif Tp['type'] in ['two-sided-erf','TwoSidedErf']:
+                T_prior = ngmix.priors.TwoSidedErf(
+                    *Tp['pars'],
+                    rng=self.rng,
+                )
+
+
             elif Tp['type']=='lognormal':
 
                 shift=Tp.get('shift',None)
@@ -260,9 +267,6 @@ class MiniMOF(dict):
                     rng=self.rng,
                 )
 
-            elif Tp['type']=="two-sided-erf":
-                T_prior_pars = Tp['pars']
-                T_prior=ngmix.priors.TwoSidedErf(*T_prior_pars, rng=self.rng)
             else:
                 raise ValueError("bad Tprior: '%s'" % Tp['type'])
 
@@ -282,6 +286,11 @@ class MiniMOF(dict):
                 rng=self.rng,
             )
 
+        elif cp['type']=='TwoSidedErf':
+            counts_prior = ngmix.priors.TwoSidedErf(
+                *cp['pars'],
+                rng=self.rng,
+            )
 
         elif cp['type']=='normal':
             counts_prior=ngmix.priors.Normal(
