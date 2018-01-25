@@ -9,7 +9,10 @@ from ngmix.gexceptions import BootPSFFailure, BootGalFailure
 
 from . import minimof
 
-class PairMaker(dict):
+class NBRMaker(dict):
+    """
+    simulate a central object and neighbors
+    """
     def __init__(self, config):
         self.update(config)
 
@@ -205,7 +208,7 @@ class Tester(object):
             'shear': [0.02, 0.00],
         }
 
-        self.sim=PairMaker(self.sim_config)
+        self.sim=NBRMaker(self.sim_config)
 
         self.fit_config=nsim.files.read_config(fit_config_name)
 
@@ -233,7 +236,7 @@ class Tester(object):
                 print("did not converge")
             else:
                 print("converged")
-                if True:
+                if doplot:
                     import images
                     corr_obs = mm.get_corrected_obs(0)
                     images.multiview(corr_obs[0].image,title='corr')
@@ -243,8 +246,8 @@ class Tester(object):
                 if input('hit a key:')=='q':
                     return
 
-def test():
+def test(doplot=False):
     t=Tester('sim-em01nbr','run-em01nbr-mcal-t01')
-    res=t.go(100,doplot=True)
+    res=t.go(100,doplot=doplot)
 
 
