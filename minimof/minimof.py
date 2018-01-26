@@ -7,6 +7,7 @@ except:
 
 import numpy
 import ngmix
+from ngmix.bootstrap import Bootstrapper, CompositeBootstrapper
 
 from ngmix.gexceptions import BootPSFFailure, BootGalFailure
 
@@ -203,12 +204,12 @@ class MiniMOF(dict):
         """
 
         if self['model']=='cm':
-            return ngmix.bootstrap.CompositeBootstrapper(
+            return CompositeBootstrapper(
                 obs,
-                #fracdev_prior=self.fracdev_prior,
+                fracdev_prior=self.fracdev_prior,
             )
         else:
-            return ngmix.bootstrap.Bootstrapper(obs)
+            return Bootstrapper(obs)
 
     def _get_prior(self):
         """
@@ -327,6 +328,25 @@ class MiniMOF(dict):
                                g_prior,
                                T_prior,
                                counts_prior)
+
+
+        if 'fracdev' in ppars:
+            fp = ppars['fracdev']
+            means = numpy.array(fp['means'])
+            weights = numpy.array(fp['weights'])
+            covars= numpy.array(fp['covars'])
+
+            if len(means.shape) == 1:
+                means = means.reshape( (means.size, 1) )
+            if len(covars.shape) == 1:
+                covars = covars.reshape( (covars.size, 1, 1) )
+
+            self.fracdev_prior = ngmix.gmix.GMixND(
+                weights,
+                means,
+                covars,
+            )
+
         return prior
 
 
