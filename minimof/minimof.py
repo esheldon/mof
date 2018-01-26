@@ -11,6 +11,8 @@ from ngmix.bootstrap import Bootstrapper, CompositeBootstrapper
 
 from ngmix.gexceptions import BootPSFFailure, BootGalFailure
 
+from ngmix.observation import Observation, ObsList, MultiBandObsList
+
 class MiniMOF(dict):
     def __init__(self, config, allobs, rng=None):
         self.update(config)
@@ -23,6 +25,27 @@ class MiniMOF(dict):
         self.nobj = len(allobs)
         self.prior=self._get_prior()
     
+    def set_allobs(self, allobs):
+        """
+        currently assume internally we got a list of  ObsLists
+
+        WE will convert list of Observations here.  Need to 
+        support MultiBandObsList too
+        """
+        if isinstance(allobs[0], ObsList):
+            self.allobs=allobs
+        elif isinstance(allobs[0], Observation):
+            nlist = []
+            for obs in allobs:
+                obslist = ObsList()
+                obslist.append( obs )
+                nlist.append(obslist)
+
+            self.allobs = nlist
+        else:
+            raise ValueError("currently only lists of "
+                             "Observation or Obslist supported")
+
     def get_result(self):
         """
         returns
@@ -147,10 +170,7 @@ class MiniMOF(dict):
 
         gm = fitter.get_convolved_gmix()
 
-        try:
-            self.allobs[i][0].set_gmix(gm)
-        except TypeError as err:
-            self.allobs[i].set_gmix(gm)
+        self.allobs[i][0].set_gmix(gm)
 
         return fitter
 
