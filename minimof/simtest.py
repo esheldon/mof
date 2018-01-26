@@ -13,10 +13,9 @@ class NBRMaker(dict):
     """
     simulate a central object and neighbors
     """
-    def __init__(self, config):
+    def __init__(self, config, rng):
         self.update(config)
-
-        self.rng = numpy.random.RandomState(seed=self['seed'])
+        self.rng = rng
 
     def _get_obj_class(self, model):
         import galsim
@@ -175,7 +174,6 @@ class Tester(object):
         import nsim
 
         self.sim_config = {
-            'seed': 34123,
             'image': {
                 'dims': [48,48],
                 'noise':10.0,
@@ -208,7 +206,9 @@ class Tester(object):
             'shear': [0.02, 0.00],
         }
 
-        self.sim=NBRMaker(self.sim_config)
+        seed = 34123
+        rng = numpy.random.RandomState(seed=self['seed'])
+        self.sim=NBRMaker(self.sim_config, rng)
 
         self.fit_config=nsim.files.read_config(fit_config_name)
 
