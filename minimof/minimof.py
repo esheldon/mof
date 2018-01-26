@@ -21,8 +21,8 @@ class MiniMOF(dict):
             rng=numpy.random.RandomState()
         self.rng=rng
 
-        self.allobs=allobs
-        self.nobj = len(allobs)
+        self.set_allobs(allobs)
+        self.nobj = len(self.allobs)
         self.prior=self._get_prior()
     
     def set_allobs(self, allobs):
