@@ -147,7 +147,10 @@ class MiniMOF(dict):
 
         gm = fitter.get_convolved_gmix()
 
-        self.allobs[i][0].set_gmix(gm)
+        try:
+            self.allobs[i][0].set_gmix(gm)
+        except TypeError as err:
+            self.allobs[i].set_gmix(gm)
 
         return fitter
 
