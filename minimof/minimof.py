@@ -221,6 +221,51 @@ class MiniMOF(dict):
         newlist.append(nobs)
         return newlist
 
+    def get_model_obs(self):
+        """
+        full model image
+        """
+
+        obslist = self.allobs[0]
+        obs = obslist[0]
+        im=0*obs.image
+        for iobs,tobslist in enumerate(self.allobs):
+
+            tobs = tobslist[0]
+            model = tobs.gmix.make_image(
+                im.shape,
+                jacobian=tobs.jacobian,
+            )
+            
+            im += model
+
+        nobs = ngmix.Observation(
+            im,
+            weight=obs.weight,
+            jacobian=obs.jacobian,
+            psf=obs.psf,
+        )
+        newlist=ngmix.ObsList(meta=obslist.meta)
+        newlist.append(nobs)
+        return newlist
+
+    def show_residuals(self, **kw):
+        """
+        show residuals
+        """
+        import images
+        im = self.allobs[0][0].image
+        model_obs = self.get_model_obs()
+
+        plt=images.compare_images(
+            im,
+            model_obs[0].image,
+            label1='original',
+            label2='model',
+            **kw
+        )
+        return plt
+
     def _get_bootstrapper(self, obs):
         """
         get the appropriate bootstrapper
