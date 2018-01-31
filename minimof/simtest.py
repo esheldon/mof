@@ -46,7 +46,6 @@ class NBRMaker(dict):
                 high =  scale,
                 size=2,
             )
-            print("pixel shift:",shift)
         else:
             raise ValueError("bad shift type: '%s'" % type)
 
