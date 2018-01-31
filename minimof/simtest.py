@@ -31,14 +31,34 @@ class NBRMaker(dict):
         return cls
 
     def _get_shift(self, shift_conf):
-        assert shift_conf['type'] =='circle'
+        """
+        get a shift in sky coordinates
+        """
+        type=shift_conf['type']
+        if type == 'circle':
+            theta = self.rng.uniform(low=0.0, high=2*numpy.pi)
+            rad = shift_conf['radius']
+            shift = rad*numpy.cos(theta),rad*numpy.sin(theta)
+        elif type == 'pixel':
+            scale=0.5*self['image']['scale']
+            shift = numpy.random.uniform(
+                low  = -scale,
+                high =  scale,
+                size=2,
+            )
+            print("pixel shift:",shift)
+        else:
+            raise ValueError("bad shift type: '%s'" % type)
 
-        theta = self.rng.uniform(low=0.0, high=2*numpy.pi)
-        rad = shift_conf['radius']
-        shift = rad*numpy.cos(theta),rad*numpy.sin(theta)
         return shift
 
     def _get_model(self, objconf, shift_conf=None):
+        """
+        get a model given the input configuration
+
+        Possibly shift it based on the shift configuration
+        """
+
         cls = self._get_obj_class(objconf['model'])
 
         obj = cls(
@@ -121,7 +141,10 @@ class NBRMaker(dict):
         objs = []
         coords = []
 
-        central_obj, shift = self._get_model(objconf['central'])
+        central_obj, shift = self._get_model(
+            objconf['central'],
+            shift_conf=objconf['central']['shift'],
+        )
         objs.append(central_obj)
 
         coord = numpy.array(shift) + ccen
