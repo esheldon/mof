@@ -4,5 +4,10 @@ from . import mof
 from .mof import MOF
 
 from . import priors
-from . import simtest
+
+# test of mini version
+from . import minitest
+
+# test of big version
+from . import moftest
 
