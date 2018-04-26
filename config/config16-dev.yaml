@@ -1,0 +1,19 @@
+dims: [48, 48]
+nobj: 16
+models: ["dev"]
+noise_sigma: 0.01
+psf_dims: [25,25]
+psf_noise_sigma: 0.0001
+
+pdfs:
+    g:
+        sigma: 0.2
+    T:
+        mean: 16.0
+        sigma: 2.0
+
+    F:
+        mean: 2.0
+        sigma: 2.0
+
+fit_model: "dev"

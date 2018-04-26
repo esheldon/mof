@@ -1,0 +1,20 @@
+dims: [48, 48]
+#dims: [64, 64]
+nobj: 16
+model: "gauss"
+noise_sigma: 0.01
+psf_dims: [25,25]
+psf_noise_sigma: 0.0001
+
+pdfs:
+    g:
+        sigma: 0.3
+    T:
+        mean: 2.0
+        sigma: 2.0
+
+    F:
+        mean: 2.0
+        sigma: 2.0
+
+fit_model: "gauss"
