@@ -1,0 +1,184 @@
+#!/usr/bin/env python
+
+import time
+import yaml
+import numpy as np
+import minimof
+import ngmix
+
+from argparse import ArgumentParser
+parser=ArgumentParser()
+
+parser.add_argument('config_file',help='config file name')
+parser.add_argument('seed',type=int,help='seed for sim')
+parser.add_argument('ntrial',type=int,help='number to simulate')
+
+parser.add_argument('--extract',
+                    action='store_true',
+                    help='use sep to extract objects')
+
+
+
+parser.add_argument('--show',
+                    action='store_true',
+                    help='show plots')
+parser.add_argument('--size',
+                    type=int,
+                    default=1000,
+                    help='size of plots plots')
+
+
+parser.add_argument('--trueguess',
+                    action='store_true',
+                    help='use true guess')
+parser.add_argument('--pdfguess',
+                    action='store_true',
+                    help='use true guess')
+parser.add_argument('--trueprior',
+                    action='store_true',
+                    help='use true priors')
+
+
+def print_pars(nobj, npars_per, pars, front="    "):
+    for i in range(nobj):
+        beg=i*npars_per
+        end=(i+1)*npars_per
+        tpars=pars[beg:end]
+        ngmix.print_pars(tpars, front=front)
+
+def main():
+    args=parser.parse_args()
+
+    with open(args.config_file) as fobj:
+        config=yaml.load(fobj)
+
+    sim=minimof.moftest.Sim(config, args.seed)
+
+    tm_sim=0.0
+    tm_fit=0.0
+    tm_extract=0.0
+    nfail=0
+    ntry=2
+
+    for i in range(args.ntrial):
+        print("%d/%d" % (i+1, args.ntrial))
+
+        this_tm_sim = time.time()
+        sim.make_obs()
+        this_tm_sim = time.time()-this_tm_sim
+
+        if args.extract:
+            import sep
+            this_tm_extract = time.time()
+            objects, segmap = sep.extract(
+                sim.image,
+                1.5,
+                #.5,
+                err=sim['noise_sigma'],
+                #minarea=2,
+                deblend_cont=0.0001,
+                segmentation_map=True,
+            )
+            this_tm_extract = time.time() - this_tm_extract 
+
+            print("found",len(objects),"objects")
+            nobj=len(objects)
+
+            if nobj == 0:
+                print("failed to find any objects")
+                nfail += 1
+                continue
+        else:
+            segmap=None
+            objects=None
+            nobj=sim['nobj']
+
+        this_tm_fit = time.time()
+
+        prior = sim.get_prior(use_truth=args.trueprior,objects=objects)
+
+        fitter=minimof.MOF(
+            sim.obs,
+            config['fit_model'],
+            nobj,
+            prior=prior,
+        )
+
+        for itry in range(ntry):
+            guess = sim.get_guess(from_truth=args.trueguess,
+                                  from_pdf=args.pdfguess,
+                                  objects=objects)
+            fitter.go(guess)
+            res=fitter.get_result()
+            if res['flags']==0:
+                break
+
+        this_tm_fit = time.time()-this_tm_fit
+
+        tm_fit += this_tm_fit
+        tm_sim += this_tm_sim
+        if args.extract:
+            tm_extract += this_tm_extract
+
+        print("this time fit:",this_tm_fit)
+
+        if res['flags'] != 0:
+            print("failed")
+            nfail += 1
+        else:
+
+            print("-"*70)
+            print("nfev:",res['nfev'])
+            print_pars(nobj, sim.get_npars_per(), guess, front="guess: ")
+            print_pars(nobj, sim.get_npars_per(), res['pars'], front="best_fit: ")
+
+            model_image = fitter.make_image(0, 0)
+
+            diff=model_image - sim.get_image()
+
+            chi2 =  ( (diff**2).sum() / sim['noise_sigma']**2 )
+            npars_tot=nobj*6
+            dof = model_image.size - npars_tot
+            chi2per = chi2/dof
+            print("chi2per:",chi2per)
+
+            if args.show:
+                import images
+                import biggles
+                plt = biggles.Table(
+                    2, 2,
+                    aspect_ratio=1.0,
+                    title=r'$\chi^2/dof: %.2f$' % chi2per,
+                )
+                plt[0,0] = images.view(sim.get_image(),
+                                       title='image',
+                                       show=False)
+                plt[0,1] = images.view(model_image,
+                                       title='model',
+                                       show=False)
+                plt[1,0] = images.view(model_image-sim.get_image(),
+                                       title='model-image',
+                                       show=False)
+
+                if segmap is not None:
+                    plt[1,1] = images.view(segmap, show=False, title='segmap')
+                else:
+                    plt[1,1] = images.view(sim.image0, show=False, title='truth')
+                plt.show(
+                    width=args.size,
+                    height=args.size,
+                )
+
+                if input('hit a key (q to quit): ')=='q':
+                    return
+
+    nuse=args.ntrial-nfail
+    print("nfail: %d / %d %g" % (nfail, args.ntrial, float(nfail)/args.ntrial))
+    print("time sim per trial:",tm_sim/nuse)
+    print("time fit per trial:",tm_fit/nuse)
+    if args.extract:
+        print("time extract per trial:",tm_extract/nuse)
+
+
+if __name__=="__main__":
+    main()
