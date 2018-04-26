@@ -5,20 +5,19 @@ except:
     xrange=range
     raw_input=input
 
-import numpy
+import numpy as np
 import ngmix
 from ngmix.bootstrap import Bootstrapper, CompositeBootstrapper
-
 from ngmix.gexceptions import BootPSFFailure, BootGalFailure
-
 from ngmix.observation import Observation, ObsList, MultiBandObsList
+
 
 class MiniMOF(dict):
     def __init__(self, config, allobs, rng=None):
         self.update(config)
 
         if rng is None:
-            rng=numpy.random.RandomState()
+            rng=np.random.RandomState()
         self.rng=rng
 
         self.set_allobs(allobs)
@@ -400,9 +399,9 @@ class MiniMOF(dict):
 
         if 'fracdev' in ppars:
             fp = ppars['fracdev']
-            means = numpy.array(fp['means'])
-            weights = numpy.array(fp['weights'])
-            covars= numpy.array(fp['covars'])
+            means = np.array(fp['means'])
+            weights = np.array(fp['weights'])
+            covars= np.array(fp['covars'])
 
             if len(means.shape) == 1:
                 means = means.reshape( (means.size, 1) )
