@@ -22,10 +22,19 @@ parser.add_argument('--extract',
 parser.add_argument('--show',
                     action='store_true',
                     help='show plots')
+parser.add_argument('--show-corrected',
+                    action='store_true',
+                    help='show plots with neighbors subtracted')
+
 parser.add_argument('--size',
                     type=int,
                     default=1000,
-                    help='size of plots plots')
+                    help='size of plot')
+parser.add_argument('--corrected-size',
+                    type=int,
+                    default=1000,
+                    help='size of corrected plot')
+
 
 
 parser.add_argument('--trueguess',
@@ -142,7 +151,7 @@ def main():
             chi2per = chi2/dof
             print("chi2per:",chi2per)
 
-            if args.show:
+            if args.show or args.show_corrected:
                 import images
                 import biggles
                 plt = biggles.Table(
@@ -156,8 +165,8 @@ def main():
                 plt[0,1] = images.view(model_image,
                                        title='model',
                                        show=False)
-                plt[1,0] = images.view(model_image-sim.get_image(),
-                                       title='model-image',
+                plt[1,0] = images.view(sim.get_image()-model_image,
+                                       title='image-model',
                                        show=False)
 
                 if segmap is not None:
@@ -168,6 +177,29 @@ def main():
                     width=args.size,
                     height=args.size,
                 )
+
+                if args.show_corrected:
+                    import esutil as eu
+                    nobj=fitter.get_nobj()
+                    grid=eu.plotting.Grid(nobj)
+                    tab=biggles.Table(grid.nrow, grid.ncol)
+                    arat=float(grid.nrow)/grid.ncol
+                    tab.aspect_ratio=arat
+                    for ishow in range(nobj):
+                        row,col=grid.get_rowcol(ishow)
+
+                        im=fitter.make_corrected_image(ishow)
+                        tab[row,col]=images.view(
+                            im,
+                            show=False,
+                            title='%d' % ishow,
+                        )
+
+                    tab.show(
+                        width=args.corrected_size,
+                        height=args.corrected_size*arat,
+                    )
+
 
                 if input('hit a key (q to quit): ')=='q':
                     return
