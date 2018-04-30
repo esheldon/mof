@@ -2,6 +2,7 @@
 assumes the psf is constant across the input larger image
 """
 import numpy as np
+import ngmix
 from ngmix.gmix import GMix, GMixModel
 from ngmix.fitting import LMSimple
 from ngmix.fitting import run_leastsq

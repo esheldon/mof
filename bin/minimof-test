@@ -178,9 +178,9 @@ def main():
                     height=args.size,
                 )
 
-                if args.show_corrected:
+                nobj=fitter.get_nobj()
+                if nobj > 1 and args.show_corrected:
                     import esutil as eu
-                    nobj=fitter.get_nobj()
                     grid=eu.plotting.Grid(nobj)
                     tab=biggles.Table(grid.nrow, grid.ncol)
                     arat=float(grid.nrow)/grid.ncol
@@ -188,9 +188,9 @@ def main():
                     for ishow in range(nobj):
                         row,col=grid.get_rowcol(ishow)
 
-                        im=fitter.make_corrected_image(ishow)
+                        tobs=fitter.make_corrected_obs(ishow)
                         tab[row,col]=images.view(
-                            im,
+                            tobs.image,
                             show=False,
                             title='%d' % ishow,
                         )
