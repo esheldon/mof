@@ -1,5 +1,8 @@
+"""
+assumes the psf is constant across the input larger image
+"""
 import numpy as np
-from ngmix.gmix import GMix
+from ngmix.gmix import GMix, GMixModel
 from ngmix.fitting import LMSimple
 from ngmix.fitting import run_leastsq
 from ngmix.gmix import (
@@ -19,7 +22,7 @@ _default_lm_pars={
 
 class MOF(LMSimple):
     """
-    fit multiple objects simultaneously
+    fit multiple objects simultaneously, but not in postage stamps
     """
     def __init__(self, obs, model, nobj, **keys):
         """
@@ -73,12 +76,80 @@ class MOF(LMSimple):
 
         result['model'] = self.model_name
         if result['flags']==0:
-            result['g'] = result['pars'][2:2+2].copy()
-            result['g_cov'] = result['pars_cov'][2:2+2, 2:2+2].copy()
             stat_dict=self.get_fit_stats(result['pars'])
             result.update(stat_dict)
 
         self._result=result
+
+    def get_nobj(self):
+        """
+        number of input objects we are fitting
+        """
+        return self.nobj
+
+    def make_corrected_obs(self, index, band=0, obsnum=0):
+        """
+        get an observation for the given object and band
+        with all the neighbors subtracted from the image
+        """
+        ref_obs = self.obs[band][obsnum]
+
+        image =self.make_corrected_image(index, band=band, obsnum=obsnum)
+
+        if ref_obs.has_psf():
+            po=ref_obs.psf
+            psf_obs=ngmix.Observation(
+                po.image.copy(),
+                weight=po.weight.copy(),
+                jacobian=po.jacobian.copy(),
+            )
+            if po.has_gmix():
+                psf_obs.gmix =  po.gmix
+        else:
+            psf_obs=None
+
+        return ngmix.Observation(
+            image,
+            weight=ref_obs.weight.copy(),
+            jacobian=ref_obs.jacobian.copy(),
+            psf=psf_obs,
+        )
+
+    def make_corrected_image(self, index, band=0, obsnum=0):
+        """
+        get an observation for the given object and band
+        with all the neighbors subtracted from the image
+        """
+
+        ref_obs = self.obs[band][obsnum]
+
+        model_image = self.make_image(band=band, obsnum=obsnum)
+
+        # now remove the object of interest from the model
+        # image
+        gm = self.get_gmix(band=band)
+        gmi = gm.get_one(index)
+        
+        if ref_obs.has_psf():
+            psf = ref_obs.psf.gmix
+            gmi = gmi.convolve(psf)
+
+        iimage = gmi.make_image(model_image.shape, jacobian=ref_obs.jacobian)
+        model_image -= iimage
+
+        image = ref_obs.image.copy()
+        image -= model_image
+
+        return image
+
+    def make_image(self, band=0, obsnum=0):
+        """
+        make an image for the given band and observation number
+        """
+        gm = self.get_convolved_gmix(band=band, obsnum=obsnum)
+        obs = self.obs[band][obsnum]
+        return gm.make_image(obs.image.shape, jacobian=obs.jacobian)
+
 
     def get_band_pars(self, pars_in, band):
         """
@@ -102,13 +173,6 @@ class MOF(LMSimple):
 
         return pars
 
-    def _make_model(self, band_pars):
-        """
-        generate a gaussian mixture with the right number of
-        components
-        """
-        return GMixModelMulti(band_pars, self.model)
-
     def get_gmix(self, band=0):
         """
         Get a gaussian mixture at the fit parameter set, which
@@ -120,8 +184,8 @@ class MOF(LMSimple):
             Band index, default 0
         """
         res=self.get_result()
-        self._fill_gmix_all_nopsf(res['pars'])
-        return self._gmix_all[band][0]
+        band_pars=self.get_band_pars(res['pars'], band)
+        return self._make_model(band_pars)
 
     def get_convolved_gmix(self, band=0, obsnum=0):
         """
@@ -136,16 +200,23 @@ class MOF(LMSimple):
             Number of observation for the given band,
             default 0
         """
-        res=self.get_result()
-        self._fill_gmix_all(res['pars'])
-        return self._gmix_all[band][obsnum]
 
-    def make_image(self, band=0, obsnum=0):
-        gm = self.get_convolved_gmix(band=band, obsnum=obsnum)
+        gm = self.get_gmix(band=band)
         obs = self.obs[band][obsnum]
-        return gm.make_image(obs.image.shape, jacobian=obs.jacobian)
+        if obs.has_psf_gmix():
+            gm = gm.convolve(obs.psf.gmix)
 
-# move to ngmix
+        return gm
+
+    def _make_model(self, band_pars):
+        """
+        generate a gaussian mixture with the right number of
+        components
+        """
+        return GMixModelMulti(band_pars, self.model)
+
+
+# TODO move to ngmix
 class GMixModelMulti(GMix):
     """
     A two-dimensional gaussian mixture created from a set of model parameters
@@ -195,6 +266,24 @@ class GMixModelMulti(GMix):
         gmix = GMixModelMulti(self._pars, self._model_name)
         return gmix
 
+    def get_one(self, index):
+        """
+        extract the mixture for one of the component
+        models 
+        """
+        if index > (self._nobj-1):
+            raise ValueError("index %d out of "
+                             "bounds [0,%d]" % (index, self._nobj-1))
+
+        #start = index*self._ngauss_per
+        #end = (index+1)*self._ngauss_per
+        start = index*self._npars_per
+        end = (index+1)*self._npars_per
+
+        pars = self._pars[start:end]
+        return GMixModel(pars, self._model_name)
+
+
     def set_cen(self, row, col):
         """
         Move the mixture to a new center
@@ -237,6 +326,7 @@ class GMixModelMulti(GMix):
                 gpars,
             )
 
+    '''
     def make_image(self, band, fast_exp=False):
         """
         render the full model
@@ -270,6 +360,6 @@ class GMixModelMulti(GMix):
             )
 
         return image
-
+    '''
 
 
