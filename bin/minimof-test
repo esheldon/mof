@@ -138,8 +138,8 @@ def main():
 
             print("-"*70)
             print("nfev:",res['nfev'])
-            print_pars(nobj, sim.get_npars_per(), guess, front="guess: ")
-            print_pars(nobj, sim.get_npars_per(), res['pars'], front="best_fit: ")
+            #print_pars(nobj, sim.get_npars_per(), guess, front="guess: ")
+            #print_pars(nobj, sim.get_npars_per(), res['pars'], front="best_fit: ")
 
             model_image = fitter.make_image(0, 0)
 

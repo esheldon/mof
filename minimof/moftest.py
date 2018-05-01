@@ -30,7 +30,7 @@ class Sim(dict):
 
         cen=(self['dims']-1.0)/2.0
         maxrad=cen[0]-self['dims'][0]/10.0
-        print("maxrad:",maxrad)
+        #print("maxrad:",maxrad)
 
         sigma=maxrad/3.0
         self.position_pdf=ngmix.priors.TruncatedSimpleGauss2D(
@@ -324,7 +324,7 @@ class Sim(dict):
                 F = self.F_pdf.sample()
 
             pars = [obj_cen1, obj_cen2, g1, g2, T, F]
-            print("TF:",T,F)
+            #print("TF:",T,F)
 
             gm=self._get_gmix(pars)
 
