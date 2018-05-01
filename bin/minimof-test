@@ -18,6 +18,9 @@ parser.add_argument('--extract',
                     help='use sep to extract objects')
 
 
+parser.add_argument('--save',
+                    action='store_true',
+                    help='save plots')
 
 parser.add_argument('--show',
                     action='store_true',
@@ -151,7 +154,7 @@ def main():
             chi2per = chi2/dof
             print("chi2per:",chi2per)
 
-            if args.show or args.show_corrected:
+            if args.show or args.save or args.show_corrected:
                 import images
                 import biggles
                 plt = biggles.Table(
@@ -173,10 +176,18 @@ def main():
                     plt[1,1] = images.view(segmap, show=False, title='segmap')
                 else:
                     plt[1,1] = images.view(sim.image0, show=False, title='truth')
-                plt.show(
-                    width=args.size,
-                    height=args.size,
-                )
+
+                if args.show:
+                    plt.show(
+                        width=args.size,
+                        height=args.size,
+                    )
+
+                if args.save:
+                    pngname='diff-%d-%06d.png' % (args.seed,i)
+                    print("writing:",pngname)
+                    plt.write_img(args.size, args.size, pngname)
+
 
                 nobj=fitter.get_nobj()
                 if nobj > 1 and args.show_corrected:
@@ -195,14 +206,25 @@ def main():
                             title='%d' % ishow,
                         )
 
-                    tab.show(
-                        width=args.corrected_size,
-                        height=args.corrected_size*arat,
-                    )
+                    if args.show:
+                        tab.show(
+                            width=args.corrected_size,
+                            height=args.corrected_size*arat,
+                        )
+                    if args.save:
+                        pngname='corr-%d-%06d.png' % (args.seed,i)
+                        print("writing:",pngname)
+                        tab.write_img(
+                            args.corrected_size,
+                            args.corrected_size*arat,
+                            pngname,
+                        )
 
 
-                if input('hit a key (q to quit): ')=='q':
-                    return
+
+                if args.show or args.show_corrected:
+                    if input('hit a key (q to quit): ')=='q':
+                        return
 
     nuse=args.ntrial-nfail
     print("nfail: %d / %d %g" % (nfail, args.ntrial, float(nfail)/args.ntrial))
