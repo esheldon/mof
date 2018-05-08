@@ -34,14 +34,27 @@ class MOF(LMSimple):
         assert self.prior is not None,"send a prior"
         self.nobj=nobj
 
-        # center1 + center2 + shape + T + fluxes for each object
-        self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+
+        if model=='bdf':
+            self.npars_per = 6+self.nband
+            self.nband_pars_per=7
+
+            # center1 + center2 + shape + T + fracdev + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+        else:
+            self.npars_per = 5+self.nband
+            self.nband_pars_per=6
+            self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+
+            # center1 + center2 + shape + T + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+
+        self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+
         self._set_fdiff_size()
 
-        self.npars_per = 5+self.nband
         self.npars = self.nobj*self.npars_per
 
-        self._band_pars=np.zeros(6*self.nobj)
 
         self.lm_pars={}
         self.lm_pars.update(_default_lm_pars)
@@ -158,19 +171,27 @@ class MOF(LMSimple):
         """
 
         pars=self._band_pars
+        nbper=self.nband_pars_per
+        nper=self.npars_per
 
         for i in range(self.nobj):
             # copy cen1,cen2,g1,g2,T
-            beg=i*6
-            end=beg+5
+            # or
+            # copy cen1,cen2,g1,g2,T,fracdev
+
+            # either i*6 or i*7
+            beg=i*nbper
+            # either 5 or 6
+            end=beg+nbper-1
 
             ibeg = i*self.npars_per
-            iend = ibeg+5
+            iend = ibeg+nbper-1
 
             pars[beg:end] = pars_in[ibeg:iend]
 
             # now copy the flux
-            pars[beg+5] = pars_in[ibeg+5+band]
+            #pars[beg+5] = pars_in[ibeg+5+band]
+            pars[end] = pars_in[iend+band]
 
         return pars
 
