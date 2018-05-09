@@ -101,7 +101,7 @@ class MOF(LMSimple):
         """
         return self.nobj
 
-    def make_corrected_obs(self, index, band=0, obsnum=0):
+    def make_corrected_obs(self, index, band=0, obsnum=0, recenter=True):
         """
         get an observation for the given object and band
         with all the neighbors subtracted from the image
@@ -122,10 +122,16 @@ class MOF(LMSimple):
         else:
             psf_obs=None
 
+        jacob = ref_obs.jacobian.copy()
+        if recenter:
+            gm = self.get_gmix(band=band)
+            row,col = gm.get_cen()
+            jacob.set_cen(row=row, col=col)
+
         return ngmix.Observation(
             image,
             weight=ref_obs.weight.copy(),
-            jacobian=ref_obs.jacobian.copy(),
+            jacobian=jacob,
             psf=psf_obs,
         )
 
