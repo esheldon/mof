@@ -124,8 +124,11 @@ class MOF(LMSimple):
 
         jacob = ref_obs.jacobian.copy()
         if recenter:
+
             gm = self.get_gmix(band=band)
-            row,col = gm.get_cen()
+            gmi = gm.get_one(index)
+
+            row,col = gmi.get_cen()
             jacob.set_cen(row=row, col=col)
 
         return ngmix.Observation(
