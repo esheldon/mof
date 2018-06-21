@@ -17,9 +17,6 @@ class Sim(dict):
     def __init__(self, config, seed):
         self.rng=np.random.RandomState(seed)
 
-        gseed=self.rng.randint(0,2**30)
-        self.guess_rng=np.random.RandomState(gseed)
-
         self.update(config)
         self['dims'] = np.array(self['dims'])
         self['psf_dims']=np.array( self['psf_dims'] )
@@ -39,43 +36,25 @@ class Sim(dict):
             maxrad,
         )
 
-    def _make_g_pdf(self, prior=False):
+    def _make_g_pdf(self):
         c=self['pdfs']['g']
-        if prior:
-            rng=self.guess_rng
-        else:
-            rng=self.rng
-
+        rng=self.rng
         return ngmix.priors.GPriorBA(c['sigma'], rng=rng)
 
-    def _make_T_pdf(self, prior=False):
+    def _make_T_pdf(self):
         c=self['pdfs']['T']
-        return self._get_generic_pdf(c, prior=prior)
+        return self._get_generic_pdf(c)
 
-    def _make_F_pdf(self, prior=False):
+    def _make_F_pdf(self):
         c=self['pdfs']['F']
         if c['type']=='trackT':
-            if prior:
-                cprior={}
-                cprior.update(self['pdfs']['T'])
-                assert cprior['type']in ['lognormal','normal']
-
-                cprior['mean'] = cprior['mean']*c['factor']
-                cprior['sigma'] = cprior['sigma']*c['factor']
-
-                return self._get_generic_pdf(cprior, prior=True)
-            else:
-                return 'trackT'
+            return 'trackT'
         else:
-            return self._get_generic_pdf(c, prior=prior)
+            return self._get_generic_pdf(c)
 
 
-    def _get_generic_pdf(self, c, prior=False):
-        if prior:
-            rng=self.guess_rng
-        else:
-            rng=self.rng
-
+    def _get_generic_pdf(self, c):
+        rng=self.rng
 
         if c['type']=='lognormal':
             pdf = ngmix.priors.LogNormal(
@@ -93,7 +72,7 @@ class Sim(dict):
             raise ValueError("bad pdf: '%s'" % c['type'])
 
         limits=c.get('limits',None)
-        if prior or limits is None:
+        if limits is None:
             return pdf
         else:
             return ngmix.priors.LimitPDF(pdf, [0.0, 30.0])

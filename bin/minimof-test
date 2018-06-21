@@ -1,10 +1,16 @@
 #!/usr/bin/env python
-
+from __future__ import print_function
 import time
 import yaml
 import numpy as np
 import minimof
 import ngmix
+import sep
+
+try:
+    xrange
+except:
+    xrange=range
 
 from argparse import ArgumentParser
 parser=ArgumentParser()
@@ -12,11 +18,6 @@ parser=ArgumentParser()
 parser.add_argument('config_file',help='config file name')
 parser.add_argument('seed',type=int,help='seed for sim')
 parser.add_argument('ntrial',type=int,help='number to simulate')
-
-parser.add_argument('--extract',
-                    action='store_true',
-                    help='use sep to extract objects')
-
 
 parser.add_argument('--save',
                     action='store_true',
@@ -50,6 +51,86 @@ parser.add_argument('--trueprior',
                     action='store_true',
                     help='use true priors')
 
+def get_mof_prior(objects, rng):
+    """
+    prior for N objects.  The priors are the same for
+    structural parameters, the only difference being the
+    centers
+    """
+
+    nobj=len(objects)
+
+    cen_priors=[]
+
+    cen_sigma=1.0 #pixels for now
+    for i in xrange(nobj):
+        row=objects['y'][i]
+        col=objects['x'][i]
+        p=ngmix.priors.CenPrior(
+            row,
+            col,
+            cen_sigma, cen_sigma,
+            rng=rng,
+        )
+        cen_priors.append(p)
+
+    g_prior=ngmix.priors.GPriorBA(
+        0.2,
+        rng=rng,
+    )
+    T_prior = ngmix.priors.TwoSidedErf(
+        -1.0, 0.1, 1.0e6, 1.0e5,
+        rng=rng,
+    )
+
+    fracdev_prior = ngmix.priors.Normal(0.1, 0.1, rng=rng)
+
+    F_prior = ngmix.priors.TwoSidedErf(
+        -100.0, 1.0, 1.0e9, 1.0e8,
+        rng=rng,
+    )
+
+    return minimof.priors.PriorBDFSepMulti(
+        cen_priors,
+        g_prior,
+        T_prior,
+        fracdev_prior,
+        F_prior,
+    )
+
+def get_guess(objects, rng):
+
+    npars_per=7
+    nobj=len(objects)
+
+    npars_tot = nobj*npars_per
+    guess = np.zeros(npars_tot)
+
+    for i in xrange(nobj):
+        row=objects['y'][i]
+        col=objects['x'][i]
+        T=objects['x2'][i] + objects['y2'][i]
+        flux=objects['flux'][i]
+
+        beg=i*npars_per
+
+        # always close guess for center
+        guess[beg+0] = row + rng.uniform(low=-0.05, high=0.05)
+        guess[beg+1] = col + rng.uniform(low=-0.05, high=0.05)
+
+        # always arbitrary guess for shape
+        guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
+        guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
+
+        guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+        # arbitrary guess for fracdev
+        guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+
+        guess[beg+6] = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+    return guess
+
 
 def print_pars(nobj, npars_per, pars, front="    "):
     for i in range(nobj):
@@ -79,35 +160,29 @@ def main():
         sim.make_obs()
         this_tm_sim = time.time()-this_tm_sim
 
-        if args.extract:
-            import sep
-            this_tm_extract = time.time()
-            objects, segmap = sep.extract(
-                sim.image,
-                1.5,
-                #.5,
-                err=sim['noise_sigma'],
-                #minarea=2,
-                deblend_cont=0.0001,
-                segmentation_map=True,
-            )
-            this_tm_extract = time.time() - this_tm_extract 
+        this_tm_extract = time.time()
+        objects, segmap = sep.extract(
+            sim.image,
+            1.5,
+            #.5,
+            err=sim['noise_sigma'],
+            #minarea=2,
+            deblend_cont=0.0001,
+            segmentation_map=True,
+        )
+        this_tm_extract = time.time() - this_tm_extract 
 
-            print("found",len(objects),"objects")
-            nobj=len(objects)
+        print("found",len(objects),"objects")
+        nobj=len(objects)
 
-            if nobj == 0:
-                print("failed to find any objects")
-                nfail += 1
-                continue
-        else:
-            segmap=None
-            objects=None
-            nobj=sim['nobj']
+        if nobj == 0:
+            print("failed to find any objects")
+            nfail += 1
+            continue
 
         this_tm_fit = time.time()
 
-        prior = sim.get_prior(use_truth=args.trueprior,objects=objects)
+        prior = get_mof_prior(objects, sim.rng)
 
         fitter=minimof.MOF(
             sim.obs,
@@ -117,9 +192,7 @@ def main():
         )
 
         for itry in range(ntry):
-            guess = sim.get_guess(from_truth=args.trueguess,
-                                  from_pdf=args.pdfguess,
-                                  objects=objects)
+            guess = get_guess(objects, sim.rng)
             fitter.go(guess)
             res=fitter.get_result()
             if res['flags']==0:
@@ -129,8 +202,7 @@ def main():
 
         tm_fit += this_tm_fit
         tm_sim += this_tm_sim
-        if args.extract:
-            tm_extract += this_tm_extract
+        tm_extract += this_tm_extract
 
         print("this time fit:",this_tm_fit)
 
@@ -230,8 +302,7 @@ def main():
     print("nfail: %d / %d %g" % (nfail, args.ntrial, float(nfail)/args.ntrial))
     print("time sim per trial:",tm_sim/nuse)
     print("time fit per trial:",tm_fit/nuse)
-    if args.extract:
-        print("time extract per trial:",tm_extract/nuse)
+    print("time extract per trial:",tm_extract/nuse)
 
 
 if __name__=="__main__":
