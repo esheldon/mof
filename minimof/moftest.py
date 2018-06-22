@@ -12,28 +12,48 @@ and doesn't degrade the chi squared
 import numpy as np
 import ngmix
 from .priors import PriorSimpleSepMulti
+try:
+    import galsim
+    have_galsim=True
+except ImportError:
+    have_galsim=False
 
 class Sim(dict):
     def __init__(self, config, seed):
         self.rng=np.random.RandomState(seed)
 
         self.update(config)
-        self['dims'] = np.array(self['dims'])
-        self['psf_dims']=np.array( self['psf_dims'] )
+        #self['dims'] = np.array(self['dims'])
 
         self.g_pdf = self._make_g_pdf()
-        self.T_pdf = self._make_T_pdf()
+        self.hlr_pdf = self._make_hlr_pdf()
         self.F_pdf = self._make_F_pdf()
+        if 'bulge+disk' in self['models']:
+            self.bulge_hlr_frac_pdf=self._make_bulge_hlr_frac_pdf()
+            self.fracdev_pdf=self._make_fracdev_pdf()
 
-        cen=(self['dims']-1.0)/2.0
-        maxrad=cen[0]-self['dims'][0]/10.0
-        #print("maxrad:",maxrad)
+        if 'knots' in self['pdfs']:
+            self.knots_frac_pdf=self._make_knots_frac_pdf()
 
-        sigma=maxrad/3.0
+        #cen=(self['dims']-1.0)/2.0
+        #maxrad=cen[0]-self['dims'][0]/10.0
+
+        sigma=self['cluster_scale']
+        maxrad = 3*sigma
+        '''
+        self.position_pdf=ngmix.priors.SimpleGauss2D(
+            0.0,0.0,
+            sigma, sigma,
+            rng=self.rng,
+        )
+        '''
+
         self.position_pdf=ngmix.priors.TruncatedSimpleGauss2D(
-            cen[0], cen[1],
+            #cen[0], cen[1],
+            0.0,0.0,
             sigma, sigma,
             maxrad,
+            rng=self.rng,
         )
 
     def _make_g_pdf(self):
@@ -41,16 +61,35 @@ class Sim(dict):
         rng=self.rng
         return ngmix.priors.GPriorBA(c['sigma'], rng=rng)
 
-    def _make_T_pdf(self):
-        c=self['pdfs']['T']
+    def _make_hlr_pdf(self):
+        c=self['pdfs']['hlr']
         return self._get_generic_pdf(c)
 
     def _make_F_pdf(self):
         c=self['pdfs']['F']
-        if c['type']=='trackT':
-            return 'trackT'
+        if c['type']=='track_hlr':
+            return 'track_hlr'
         else:
             return self._get_generic_pdf(c)
+
+    def _make_bulge_hlr_frac_pdf(self):
+        c=self['pdfs']['bulge_hlr']
+        assert c['fac']['type'] == 'uniform'
+        frng=c['fac']['range']
+        return ngmix.priors.FlatPrior(frng[0], frng[1], rng=self.rng)
+
+    def _make_fracdev_pdf(self):
+        c=self['pdfs']['fracdev']
+        assert c['type'] == 'uniform'
+        frng=c['range']
+        return ngmix.priors.FlatPrior(frng[0], frng[1], rng=self.rng)
+
+
+    def _make_knots_frac_pdf(self):
+        c=self['pdfs']['knots']
+        assert c['frac']['type'] == 'uniform'
+        frng=c['frac']['range']
+        return ngmix.priors.FlatPrior(frng[0], frng[1], rng=self.rng)
 
 
     def _get_generic_pdf(self, c):
@@ -79,13 +118,9 @@ class Sim(dict):
 
     def make_obs(self):
         self._set_psf()
-
-        self._set_gmixes()
-
-        self._make_image()
+        self._set_objects()
         self._draw_objects()
         self._add_noise()
-
         self._make_obs()
 
     def get_obs(self):
@@ -97,38 +132,108 @@ class Sim(dict):
     def show(self):
         images.multiview(self.image)
 
-    def get_npars_per(self):
-        return len(self.parlist[0])
+    def _fit_psf_admom(self, obs):
+        Tguess=4.0*self['pixel_scale']**2
+        am=ngmix.admom.run_admom(obs, Tguess)
+        return am.get_gmix()
 
     def _set_psf(self):
-        pars = [0.0,0.0,0.0,0.0,4.0,1.0]
-        self.psf = ngmix.GMixModel(pars,"gauss")
+        import galsim
 
-        pcen=(self['psf_dims']-1.0)/2.0
-        pjac = ngmix.UnitJacobian(row=pcen[0], col=pcen[1])
+        self.psf = galsim.Gaussian(fwhm=0.9)
 
-        self.psf_im = self.psf.make_image(self['psf_dims'], jacobian=pjac)
+        kw={'scale':self['pixel_scale']}
+        dims=self.get('psf_dims',None)
+        if dims is not None:
+            kw['nx'],kw['ny'] = dims[1],dims[0]
+
+        self.psf_im = self.psf.drawImage(**kw).array
+
+        dims = np.array(self.psf_im.shape)
+        pcen=(dims-1.0)/2.0
+        pjac = ngmix.DiagonalJacobian(
+            row=pcen[0],
+            col=pcen[1],
+            scale=self['pixel_scale']
+        )
+
 
         self.psf_im += self.rng.normal(
             scale=self['psf_noise_sigma'],
-            size=self['psf_dims'],
+            size=dims,
         )
-        psf_wt=np.zeros(self['psf_dims'])+1.0/self['psf_noise_sigma']**2
+        psf_wt=np.zeros(dims)+1.0/self['psf_noise_sigma']**2
 
         self.psf_obs = ngmix.Observation(
             self.psf_im,
             weight=psf_wt,
             jacobian=pjac,
-            gmix=self.psf,
         )
 
-    def _make_image(self):
-        self.image0 = np.zeros( self['dims'], dtype='f8')
+        psf_gmix=self._fit_psf_admom(self.psf_obs)
+        self.psf_obs.set_gmix(psf_gmix)
 
-        # this is for drawing
-        self.jacobian = ngmix.UnitJacobian(row=0, col=0)
+    def _get_bulgedisk_object(self):
+        disk_g1,disk_g2 = self.g_pdf.sample2d()
+        bulge_g1,bulge_g2 = self.g_pdf.sample2d()
 
-    def _get_gmix(self, pars):
+        disk_hlr = self.hlr_pdf.sample()
+        bulge_shift_width = disk_hlr*self['pdfs']['bulge_shift']
+
+        bulge_dx, bulge_dy = self.rng.uniform(
+            low=-bulge_shift_width,
+            high=bulge_shift_width,
+            size=2,
+        )
+
+
+        bulge_hlr = disk_hlr*self.bulge_hlr_frac_pdf.sample()
+
+        if self.F_pdf=='track_hlr':
+            flux = disk_hlr**2 *self['pdfs']['F']['factor']
+        else:
+            flux = self.F_pdf.sample()
+
+        fracdev = self.fracdev_pdf.sample()
+
+        total_disk_flux = (1-fracdev)*flux
+        bulge_flux = fracdev*flux
+
+        if hasattr(self,'knots_frac_pdf'):
+            knots_frac = self.knots_frac_pdf.sample()
+            smooth_frac = 1 - knots_frac
+
+            smooth_flux = smooth_frac*total_disk_flux
+            knots_flux = knots_frac*total_disk_flux
+
+            smooth_disk = galsim.Exponential(
+                half_light_radius=disk_hlr,
+                flux=smooth_flux,
+            )
+            knots = galsim.RandomWalk(
+                self['pdfs']['knots']['num'],
+                half_light_radius=disk_hlr,
+                flux=knots_flux,
+                profile=smooth_disk,
+            )
+            smooth_disk = smooth_disk.shear(g1=disk_g1, g2=disk_g2)
+            disk = galsim.Add(smooth_disk, knots)
+            disk = disk.shear(g1=disk_g1, g2=disk_g2)
+        else:
+            disk = galsim.Exponential(
+                half_light_radius=disk_hlr,
+                flux=total_disk_flux,
+            )
+
+        bulge=galsim.DeVaucouleurs(
+            half_light_radius=bulge_hlr,
+            flux=bulge_flux,
+        ).shift(dx=bulge_dx, dy=bulge_dy)
+
+        return galsim.Sum(bulge, disk)
+
+
+    def _get_object(self):
         """
         draw a random model
         """
@@ -136,49 +241,28 @@ class Sim(dict):
         i=self.rng.randint(0, len(self['models']))
         modname=self['models'][i]
 
+        obj_cen1, obj_cen2 = self.position_pdf.sample()
+
         if modname=='bulge+disk':
-            fracdev = self.rng.uniform(low=0.0, high=1.0)
-            TdByTe=1.0
-            gm0 = ngmix.gmix.GMixCM(fracdev, TdByTe, pars)
+            obj = self._get_bulgedisk_object()
         else:
-            gm0 = ngmix.GMixModel(pars, modname)
+            obj = self._get_simple_object()
 
-        gm = gm0.convolve(self.psf)
-        return gm
+        obj = obj.shift(
+            dx=obj_cen2,
+            dy=obj_cen1,
+        )
+        return obj
 
-    def _set_gmixes(self):
+    def _set_objects(self):
         rng=self.rng
         obj_pars = []
 
-        #cen=(self['dims']-1.0)/2.0
-        #low=cen-self['dims']/4.0
-        #high=cen+self['dims']/4.0
-        gmlist=[]
-        parlist=[]
-
+        self.objlist=[]
         for i in range(self['nobj']):
 
-            #obj_cen1 = rng.uniform(low=low[0], high=high[0])
-            #obj_cen2 = rng.uniform(low=low[1], high=high[1])
-            obj_cen1, obj_cen2 = self.position_pdf.sample()
-
-            g1,g2 = self.g_pdf.sample2d()
-            T = self.T_pdf.sample()
-            if self.F_pdf=='trackT':
-                F = T*self['pdfs']['F']['factor']
-            else:
-                F = self.F_pdf.sample()
-
-            pars = [obj_cen1, obj_cen2, g1, g2, T, F]
-            #print("TF:",T,F)
-
-            gm=self._get_gmix(pars)
-
-            gmlist.append(gm)
-            parlist.append(pars)
-
-        self.gmlist=gmlist
-        self.parlist=parlist
+            obj = self._get_object()
+            self.objlist.append(obj)
 
     def _draw_objects(self):
         """
@@ -186,19 +270,38 @@ class Sim(dict):
         we don't need to
         """
 
-        for gm in self.gmlist:
-            tim = gm.make_image(self['dims'], jacobian=self.jacobian)
+        objects = galsim.Sum(self.objlist)
+        convolved_objects = galsim.Convolve(objects, self.psf)
 
-            self.image0 += tim
+        kw={'scale':self['pixel_scale']}
+
+        dims = self.get('dims',None)
+        if dims is not None:
+            kw['nx'],kw['ny'] = dims[1],dims[0]
+
+        dims = np.array(self.psf_im.shape)
+        self.image0 = convolved_objects.drawImage(**kw).array
+
+        #import images
+        #images.multiview(self.image0)
+        #stop
 
     def _add_noise(self):
-        self.image = self.image0 + \
-                self.rng.normal(scale=self['noise_sigma'], size=self['dims'])
-
+        noise_image = self.rng.normal(
+            scale=self['noise_sigma'],
+            size=self.image0.shape,
+        )
+        self.image = self.image0 + noise_image
 
     def _make_obs(self):
 
-        wt=np.zeros(self['dims']) + 1.0/self['noise_sigma']**2
+        self.jacobian = ngmix.DiagonalJacobian(
+            row=0,
+            col=0,
+            scale=self['pixel_scale']
+        )
+
+        wt=np.zeros(self.image.shape) + 1.0/self['noise_sigma']**2
         self.obs = ngmix.Observation(
             self.image,
             weight=wt,

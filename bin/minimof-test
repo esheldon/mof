@@ -51,8 +51,12 @@ parser.add_argument('--trueprior',
                     action='store_true',
                     help='use true priors')
 
-def get_mof_prior(objects, rng):
+def get_mof_prior(objects, jacobian, rng):
     """
+    Note a single jacobian is being sent.  for multi-band this
+    is the same as assuming they are all on the same coordinate system.
+    
+    assuming all images have the 
     prior for N objects.  The priors are the same for
     structural parameters, the only difference being the
     centers
@@ -62,13 +66,15 @@ def get_mof_prior(objects, rng):
 
     cen_priors=[]
 
-    cen_sigma=1.0 #pixels for now
+    cen_sigma=jacobian.get_scale() # a pixel
     for i in xrange(nobj):
-        row=objects['y'][i]
-        col=objects['x'][i]
+        row=objects['y'][i]-1
+        col=objects['x'][i]-1
+
+        v, u = jacobian(row, col)
         p=ngmix.priors.CenPrior(
-            row,
-            col,
+            v,
+            u,
             cen_sigma, cen_sigma,
             rng=rng,
         )
@@ -83,7 +89,8 @@ def get_mof_prior(objects, rng):
         rng=rng,
     )
 
-    fracdev_prior = ngmix.priors.Normal(0.1, 0.1, rng=rng)
+    fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
+    #fracdev_prior = ngmix.priors.Normal(0.0, 100, rng=rng)
 
     F_prior = ngmix.priors.TwoSidedErf(
         -100.0, 1.0, 1.0e9, 1.0e8,
@@ -98,7 +105,10 @@ def get_mof_prior(objects, rng):
         F_prior,
     )
 
-def get_guess(objects, rng):
+def get_guess(objects, jacobian, rng):
+
+    scale=jacobian.get_scale()
+    pos_range = scale*0.1
 
     npars_per=7
     nobj=len(objects)
@@ -107,16 +117,19 @@ def get_guess(objects, rng):
     guess = np.zeros(npars_tot)
 
     for i in xrange(nobj):
-        row=objects['y'][i]
-        col=objects['x'][i]
-        T=objects['x2'][i] + objects['y2'][i]
-        flux=objects['flux'][i]
+        row=objects['y'][i]-1
+        col=objects['x'][i]-1
+
+        v, u = jacobian(row, col)
+
+        T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+        flux=scale**2 * objects['flux'][i]
 
         beg=i*npars_per
 
         # always close guess for center
-        guess[beg+0] = row + rng.uniform(low=-0.05, high=0.05)
-        guess[beg+1] = col + rng.uniform(low=-0.05, high=0.05)
+        guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
+        guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
 
         # always arbitrary guess for shape
         guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
@@ -142,6 +155,7 @@ def print_pars(nobj, npars_per, pars, front="    "):
 def main():
     args=parser.parse_args()
 
+    print("seed:",args.seed)
     with open(args.config_file) as fobj:
         config=yaml.load(fobj)
 
@@ -154,6 +168,7 @@ def main():
     ntry=2
 
     for i in range(args.ntrial):
+        print("-"*70)
         print("%d/%d" % (i+1, args.ntrial))
 
         this_tm_sim = time.time()
@@ -182,7 +197,11 @@ def main():
 
         this_tm_fit = time.time()
 
-        prior = get_mof_prior(objects, sim.rng)
+        prior = get_mof_prior(
+            objects,
+            sim.obs.jacobian,
+            sim.rng,
+        )
 
         fitter=minimof.MOF(
             sim.obs,
@@ -192,7 +211,7 @@ def main():
         )
 
         for itry in range(ntry):
-            guess = get_guess(objects, sim.rng)
+            guess = get_guess(objects, sim.obs.jacobian, sim.rng)
             fitter.go(guess)
             res=fitter.get_result()
             if res['flags']==0:
@@ -209,12 +228,18 @@ def main():
         if res['flags'] != 0:
             print("failed")
             nfail += 1
+
+            if args.show:
+                import images
+                images.view(sim.obs.image)
+                if input('hit a key (q to quit): ')=='q':
+                    return
         else:
 
-            print("-"*70)
             print("nfev:",res['nfev'])
-            #print_pars(nobj, sim.get_npars_per(), guess, front="guess: ")
-            #print_pars(nobj, sim.get_npars_per(), res['pars'], front="best_fit: ")
+            npars_per=guess.size//nobj
+            print_pars(nobj, npars_per, guess, front="guess: ")
+            print_pars(nobj, npars_per, res['pars'], front="best_fit: ")
 
             model_image = fitter.make_image(0, 0)
 
