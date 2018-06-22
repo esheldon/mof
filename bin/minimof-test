@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
+import os
 import time
 import yaml
 import numpy as np
@@ -159,6 +160,8 @@ def main():
     with open(args.config_file) as fobj:
         config=yaml.load(fobj)
 
+    pngbase=os.path.basename(args.config_file).replace('.yaml','')
+
     sim=minimof.moftest.Sim(config, args.seed)
 
     tm_sim=0.0
@@ -281,7 +284,7 @@ def main():
                     )
 
                 if args.save:
-                    pngname='diff-%d-%06d.png' % (args.seed,i)
+                    pngname='%s-diff-%d-%06d.png' % (pngbase,args.seed,i)
                     print("writing:",pngname)
                     plt.write_img(args.size, args.size, pngname)
 
@@ -309,7 +312,7 @@ def main():
                             height=args.corrected_size*arat,
                         )
                     if args.save:
-                        pngname='corr-%d-%06d.png' % (args.seed,i)
+                        pngname='%s-corr-%d-%06d.png' % (pngbase,args.seed,i)
                         print("writing:",pngname)
                         tab.write_img(
                             args.corrected_size,
