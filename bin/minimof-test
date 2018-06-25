@@ -7,6 +7,7 @@ import numpy as np
 import minimof
 import ngmix
 import sep
+import fitsio
 
 try:
     xrange
@@ -69,8 +70,8 @@ def get_mof_prior(objects, jacobian, rng):
 
     cen_sigma=jacobian.get_scale() # a pixel
     for i in xrange(nobj):
-        row=objects['y'][i]-1
-        col=objects['x'][i]-1
+        row=objects['y'][i]#-1
+        col=objects['x'][i]#-1
 
         v, u = jacobian(row, col)
         p=ngmix.priors.CenPrior(
@@ -118,8 +119,8 @@ def get_guess(objects, jacobian, rng):
     guess = np.zeros(npars_tot)
 
     for i in xrange(nobj):
-        row=objects['y'][i]-1
-        col=objects['x'][i]-1
+        row=objects['y'][i]#-1
+        col=objects['x'][i]#-1
 
         v, u = jacobian(row, col)
 
@@ -160,7 +161,17 @@ def main():
     with open(args.config_file) as fobj:
         config=yaml.load(fobj)
 
-    pngbase=os.path.basename(args.config_file).replace('.yaml','')
+    filebase=os.path.basename(args.config_file).replace('.yaml','')
+    filebase='%s-%d' % (filebase,args.seed)
+    fitsfile=filebase+'.fits'
+    print("opening fits file:",fitsfile)
+    fits=fitsio.FITS(fitsfile,mode='rw',clobber=True)
+    dt=[
+        ('guess','f8',7),
+        ('pars','f8',7),
+    ]
+
+    results=[]
 
     sim=minimof.moftest.Sim(config, args.seed)
 
@@ -239,8 +250,14 @@ def main():
                     return
         else:
 
-            print("nfev:",res['nfev'])
             npars_per=guess.size//nobj
+
+            output=np.zeros(nobj, dtype=dt)
+            output['guess'] = guess.reshape(nobj, npars_per)
+            output['pars'] = res['pars'].reshape(nobj, npars_per)
+            fits.write(output)
+
+            print("nfev:",res['nfev'])
             print_pars(nobj, npars_per, guess, front="guess: ")
             print_pars(nobj, npars_per, res['pars'], front="best_fit: ")
 
@@ -284,7 +301,7 @@ def main():
                     )
 
                 if args.save:
-                    pngname='%s-diff-%d-%06d.png' % (pngbase,args.seed,i)
+                    pngname='%s-diff-%06d.png' % (filebase,i)
                     print("writing:",pngname)
                     plt.write_img(args.size, args.size, pngname)
 
@@ -312,7 +329,7 @@ def main():
                             height=args.corrected_size*arat,
                         )
                     if args.save:
-                        pngname='%s-corr-%d-%06d.png' % (pngbase,args.seed,i)
+                        pngname='%s-corr-%d-%06d.png' % (filebase,args.seed,i)
                         print("writing:",pngname)
                         tab.write_img(
                             args.corrected_size,
@@ -331,6 +348,7 @@ def main():
     print("time sim per trial:",tm_sim/nuse)
     print("time fit per trial:",tm_fit/nuse)
     print("time extract per trial:",tm_extract/nuse)
+    print("output is in:",fitsfile)
 
 
 if __name__=="__main__":
