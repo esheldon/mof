@@ -276,17 +276,20 @@ def main():
                 import biggles
                 plt = biggles.Table(
                     2, 2,
-                    aspect_ratio=1.0,
+                    aspect_ratio=0.9,
                     title=r'$\chi^2/dof: %.2f$' % chi2per,
                 )
                 plt[0,0] = images.view(sim.get_image(),
                                        title='image',
+                                       scale=True,
                                        show=False)
                 plt[0,1] = images.view(model_image,
                                        title='model',
+                                       scale=True,
                                        show=False)
                 plt[1,0] = images.view(sim.get_image()-model_image,
                                        title='image-model',
+                                       scale=True,
                                        show=False)
 
                 if segmap is not None:
