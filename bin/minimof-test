@@ -319,7 +319,7 @@ def main():
                     for ishow in range(nobj):
                         row,col=grid.get_rowcol(ishow)
 
-                        tobs=fitter.make_corrected_obs(ishow)
+                        tobs=fitter.make_corrected_obs(ishow,band=0,obsnum=0)
                         tab[row,col]=images.view(
                             tobs.image,
                             show=False,

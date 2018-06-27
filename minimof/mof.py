@@ -101,42 +101,86 @@ class MOF(LMSimple):
         """
         return self.nobj
 
-    def make_corrected_obs(self, index, band=0, obsnum=0, recenter=True):
+    def make_corrected_obs(self, index, band=None, obsnum=None, recenter=True):
         """
-        get an observation for the given object and band
+        get observation(s) for the given object and band
         with all the neighbors subtracted from the image
+
+        parameters
+        ----------
+        index: number
+            The object index.
+        band: number, optional
+            The optional band.  If not sent, all bands and epochs are returned
+            in a MultiBandObsList
+        obsnum: number, optional
+            If band= is sent, you can also send obsnum to pick a particular
+            epoch/observation
         """
-        ref_obs = self.obs[band][obsnum]
 
-        image =self.make_corrected_image(index, band=band, obsnum=obsnum)
+        if band is None:
+            # get all bands and epochs
+            output=ngmix.MultiBandObsList()
+            for band in range(self.nband):
+                obslist=self.make_corrected_obs(
+                    index,
+                    band=band,
+                    recenter=recenter,
+                )
+                output.append(obslist)
 
-        if ref_obs.has_psf():
-            po=ref_obs.psf
-            psf_obs=ngmix.Observation(
-                po.image.copy(),
-                weight=po.weight.copy(),
-                jacobian=po.jacobian.copy(),
-            )
-            if po.has_gmix():
-                psf_obs.gmix =  po.gmix
+        elif obsnum is None:
+            # band specified, but not the observation, so get all
+            # epochs for this band
+
+            output=ngmix.ObsList()
+
+            nepoch = len(self.obs[band])
+            for obsnum in range(nepoch):
+                obs = self.make_corrected_obs(
+                    index,
+                    band=band,
+                    obsnum=obsnum,
+                    recenter=recenter,
+                )
+                output.append(obs)
+
         else:
-            psf_obs=None
+            # band and obsnum specified
 
-        jacob = ref_obs.jacobian.copy()
-        if recenter:
+            ref_obs = self.obs[band][obsnum]
 
-            gm = self.get_gmix(band=band)
-            gmi = gm.get_one(index)
+            image =self.make_corrected_image(index, band=band, obsnum=obsnum)
 
-            row,col = gmi.get_cen()
-            jacob.set_cen(row=row, col=col)
+            if ref_obs.has_psf():
+                po=ref_obs.psf
+                psf_obs=ngmix.Observation(
+                    po.image.copy(),
+                    weight=po.weight.copy(),
+                    jacobian=po.jacobian.copy(),
+                )
+                if po.has_gmix():
+                    psf_obs.gmix =  po.gmix
+            else:
+                psf_obs=None
 
-        return ngmix.Observation(
-            image,
-            weight=ref_obs.weight.copy(),
-            jacobian=jacob,
-            psf=psf_obs,
-        )
+            jacob = ref_obs.jacobian.copy()
+            if recenter:
+
+                gm = self.get_gmix(band=band)
+                gmi = gm.get_one(index)
+
+                row,col = gmi.get_cen()
+                jacob.set_cen(row=row, col=col)
+
+            output = ngmix.Observation(
+                image,
+                weight=ref_obs.weight.copy(),
+                jacobian=jacob,
+                psf=psf_obs,
+            )
+
+        return output
 
     def make_corrected_image(self, index, band=0, obsnum=0):
         """
