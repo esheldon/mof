@@ -210,20 +210,19 @@ class Sim(dict):
                 half_light_radius=disk_hlr,
                 flux=smooth_flux,
             )
+
             knots = galsim.RandomWalk(
                 self['pdfs']['knots']['num'],
-                half_light_radius=disk_hlr,
-                flux=knots_flux,
-                profile=smooth_disk,
+                profile=smooth_disk.withFlux(knots_flux),
             )
-            smooth_disk = smooth_disk.shear(g1=disk_g1, g2=disk_g2)
             disk = galsim.Add(smooth_disk, knots)
-            disk = disk.shear(g1=disk_g1, g2=disk_g2)
         else:
             disk = galsim.Exponential(
                 half_light_radius=disk_hlr,
                 flux=total_disk_flux,
             )
+
+        disk = disk.shear(g1=disk_g1, g2=disk_g2)
 
         bulge=galsim.DeVaucouleurs(
             half_light_radius=bulge_hlr,
