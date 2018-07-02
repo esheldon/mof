@@ -112,7 +112,6 @@ class PriorBDFSepMulti(object):
                  fracdev_prior,
                  F_prior):
 
-        self.npars_per=7
         self.nobj=len(cen_priors)
         self.cen_priors=cen_priors
         self.g_prior=g_prior
@@ -125,6 +124,7 @@ class PriorBDFSepMulti(object):
             self.nband=1
             F_prior=[F_prior]
 
+        self.npars_per=6+self.nband
         self.F_priors=F_prior
 
         
