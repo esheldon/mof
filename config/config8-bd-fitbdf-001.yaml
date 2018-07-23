@@ -1,0 +1,49 @@
+# scale of object in arcseconds.  Currently this
+# is a gaussian sigma
+cluster_scale: 2.0
+#dims: [48, 48]
+dims: [64,64]
+nobj: 8
+models: ['bulge+disk']
+pixel_scale: 0.263
+
+noise_sigma: 0.04
+#psf_dims: [25,25]
+psf_noise_sigma: 0.0001
+
+pdfs:
+    g:
+        sigma: 0.2
+
+    # hlr of the disk
+    hlr:
+        type: lognormal
+        mean: 0.5
+        sigma: 0.15
+
+    fracdev:
+        type: uniform
+        range: [0.0, 1.0]
+
+    bulge_hlr:
+        fac:
+            type: uniform
+            # relative to disk size
+            range: [0.9, 1.1]
+
+    # shift in units of the disk hlr
+    bulge_shift: 0.05
+
+    F:
+        type: track_hlr
+        factor: 100.0
+
+    knots:
+        num: 100
+        frac:
+            type: uniform
+            range: [0.0, 0.5]
+
+fit_model: bdf
+
+shear: [0.02, 0.00]
