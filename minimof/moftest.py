@@ -270,6 +270,14 @@ class Sim(dict):
         """
 
         objects = galsim.Sum(self.objlist)
+
+        shear=self.get('shear',None)
+        if shear is not None:
+            objects = objects.shear(
+                g1=shear[0],
+                g2=shear[1],
+            )
+
         convolved_objects = galsim.Convolve(objects, self.psf)
 
         kw={'scale':self['pixel_scale']}
