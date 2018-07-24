@@ -1,3 +1,12 @@
+"""
+TODO:
+    add uberseg
+    explore box sizes
+        look preety good for isolated objects
+    explore threshold
+        how many spurious?  maybe test with nothing images
+
+"""
 from __future__ import print_function
 import numpy as np
 import esutil as eu
@@ -127,7 +136,8 @@ class MEDSifier(object):
 
     def _run_sep(self):
         import sep
-        THRESH=1.0 # in sky sigma
+        #THRESH=1.0 # in sky sigma
+        THRESH=1.5 # in sky sigma
         objs, seg = sep.extract(
             self.detim,
             THRESH,
@@ -260,24 +270,28 @@ def test():
 
     nobj=4
     nband=3
-    noises=[0.001,0.002,0.003]
+    noises=[0.0005,0.001,0.0015]
     scale=0.263
 
+    psf=galsim.Gaussian(fwhm=0.9)
     all_band_obj=[]
+    dims=64,64
     for i in xrange(nobj):
-        fwhm=np.random.uniform(low=1.0, high=3.0)
-        dx,dy=np.random.uniform(low=-5.0, high=5.0, size=2)
+        r50=np.random.uniform(low=0.5, high=2.0)
+        dx,dy=np.random.uniform(low=-3.0, high=3.0, size=2)
+        g1,g2=np.random.normal(scale=0.2, size=2).clip(max=0.5)
 
         tmp=np.random.uniform(low=0.0, high=1.0)
         if tmp < 0.5:
             colors = np.array([0.5, 1.0, 1.5]) \
                     + np.random.uniform(low=-0.1, high=0.1, size=3)
+            obj = galsim.DeVaucouleurs(half_light_radius=r50).shift(dx=dx, dy=dy).shear(g1=g1,g2=g2)
         else:
             colors = np.array([1.5, 1.0, 0.5]) \
                     + np.random.uniform(low=-0.1, high=0.1, size=3)
-        g1,g2=np.random.normal(scale=0.2, size=2).clip(max=0.5)
+            obj = galsim.Exponential(half_light_radius=r50).shift(dx=dx, dy=dy).shear(g1=g1,g2=g2)
 
-        obj = galsim.Gaussian(fwhm=fwhm).shift(dx=dx, dy=dy).shear(g1=g1,g2=g2)
+        obj=galsim.Convolve(obj, psf)
 
         band_objs = [obj.withFlux(colors[j]) for j in xrange(nband)]
 
@@ -288,11 +302,13 @@ def test():
         band_objects = [ o[band] for o in all_band_obj ]
         obj = galsim.Sum(band_objects)
 
-        if band==0:
-            im = obj.drawImage(scale=scale).array
-            dims=im.shape
-        else:
-            im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
+        im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
+        #if band==0:
+        #    im = obj.drawImage(scale=scale).array
+        #    dims=im.shape
+        #else:
+        #    im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
+        im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
 
         im += np.random.normal(scale=noises[band], size=im.shape)
         wt = im*0 + 1.0/noises[band]**2
@@ -317,7 +333,12 @@ def test():
     #images.view(rgb)
  
     mer=MEDSifier(dlist)
-    images.view_mosaic( [rgb,mer.seg], dims=[2000,1000])
+    images.view_mosaic(
+        [rgb,
+         mer.seg,
+         mer.detim],
+        dims=[2000,2000],
+    )
 
     mg=mer.get_meds(0)
     mr=mer.get_meds(1)
@@ -333,7 +354,9 @@ def test():
 
         rgb=images.get_color_image(
             #imi*fac,imr*fac,img*fac,
-            imi,imr,img,
+            imi.transpose(),
+            imr.transpose(),
+            img.transpose(),
             nonlinear=0.1,
         )
         rgb *= 1.0/rgb.max()
