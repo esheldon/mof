@@ -211,10 +211,16 @@ class Sim(dict):
                 flux=smooth_flux,
             )
 
+            #knots = galsim.RandomWalk(
+            #    npoints=self['pdfs']['knots']['num'],
+            #    profile=smooth_disk.withFlux(knots_flux),
+            #)
             knots = galsim.RandomWalk(
-                self['pdfs']['knots']['num'],
-                profile=smooth_disk.withFlux(knots_flux),
+                npoints=self['pdfs']['knots']['num'],
+                half_light_radius=disk_hlr,
+                flux=knots_flux,
             )
+
             disk = galsim.Add(smooth_disk, knots)
         else:
             disk = galsim.Exponential(
