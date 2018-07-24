@@ -51,6 +51,10 @@ class MEDSInterface(object):
             scol:ecol,
         ].copy()
 
+    @property
+    def size(self):
+        return self._cat.size
+
     def _check_indices(self, iobj, icutout=None):
         if iobj >= self._cat.size:
             raise ValueError("object index should be within "
@@ -253,20 +257,87 @@ class MEDSifier(object):
 def test():
     import galsim
     import images
-    g=galsim.Gaussian(fwhm=1)
-    scale=0.263
-    im=g.drawImage(scale=scale).array
-    noises=[0.001,0.002,0.003]
-    dlist=[
-        {'image':im+np.random.normal(scale=noises[i],size=im.shape),
-         'weight':np.zeros(im.shape)+1.0/noises[i]**2,
-         'noise':noises[i],
-         'pixel_scale':scale,
-        }
-        for i in xrange(len(noises))
-    ]
 
+    nobj=4
+    nband=3
+    noises=[0.001,0.002,0.003]
+    scale=0.263
+
+    all_band_obj=[]
+    for i in xrange(nobj):
+        fwhm=np.random.uniform(low=1.0, high=3.0)
+        dx,dy=np.random.uniform(low=-5.0, high=5.0, size=2)
+
+        tmp=np.random.uniform(low=0.0, high=1.0)
+        if tmp < 0.5:
+            colors = np.array([0.5, 1.0, 1.5]) \
+                    + np.random.uniform(low=-0.1, high=0.1, size=3)
+        else:
+            colors = np.array([1.5, 1.0, 0.5]) \
+                    + np.random.uniform(low=-0.1, high=0.1, size=3)
+        g1,g2=np.random.normal(scale=0.2, size=2).clip(max=0.5)
+
+        obj = galsim.Gaussian(fwhm=fwhm).shift(dx=dx, dy=dy).shear(g1=g1,g2=g2)
+
+        band_objs = [obj.withFlux(colors[j]) for j in xrange(nband)]
+
+        all_band_obj.append( band_objs )
+
+    dlist=[]
+    for band in xrange(nband):
+        band_objects = [ o[band] for o in all_band_obj ]
+        obj = galsim.Sum(band_objects)
+
+        if band==0:
+            im = obj.drawImage(scale=scale).array
+            dims=im.shape
+        else:
+            im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
+
+        im += np.random.normal(scale=noises[band], size=im.shape)
+        wt = im*0 + 1.0/noises[band]**2
+
+        dlist.append(
+            dict(
+                image=im,
+                weight=wt,
+                noise=noises[band],
+                pixel_scale=scale,
+            )
+        )
+
+    rgb=images.get_color_image(
+        #imi*fac,imr*fac,img*fac,
+        dlist[2]['image'].transpose(),
+        dlist[1]['image'].transpose(),
+        dlist[0]['image'].transpose(),
+        nonlinear=0.1,
+    )
+    rgb *= 1.0/rgb.max()
+    #images.view(rgb)
+ 
     mer=MEDSifier(dlist)
-    m=mer.get_meds(0)
-    im=m.get_cutout(0,0)
-    images.multiview(im)
+    images.view_mosaic( [rgb,mer.seg], dims=[2000,1000])
+
+    mg=mer.get_meds(0)
+    mr=mer.get_meds(1)
+    mi=mer.get_meds(2)
+    nobj=mg.size
+
+    imlist=[]
+    for i in xrange(nobj):
+
+        img=mg.get_cutout(i,0)
+        imr=mr.get_cutout(i,0)
+        imi=mi.get_cutout(i,0)
+
+        rgb=images.get_color_image(
+            #imi*fac,imr*fac,img*fac,
+            imi,imr,img,
+            nonlinear=0.1,
+        )
+        rgb *= 1.0/rgb.max()
+        imlist.append(rgb)
+
+    #images.view(rgb)
+    images.view_mosaic(imlist)
