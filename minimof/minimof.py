@@ -1,10 +1,4 @@
 from __future__ import print_function
-try:
-    xrange
-except:
-    xrange=range
-    raw_input=input
-
 import numpy as np
 import ngmix
 from ngmix.bootstrap import Bootstrapper, CompositeBootstrapper
