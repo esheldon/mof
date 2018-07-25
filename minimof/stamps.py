@@ -269,7 +269,7 @@ def test(dim=2000):
     import images
 
     nobj=4
-    nknots=10
+    nknots=100
     nband=3
     noises=[0.0005,0.001,0.0015]
     scale=0.263
@@ -277,11 +277,15 @@ def test(dim=2000):
     psf=galsim.Gaussian(fwhm=0.9)
     all_band_obj=[]
     dims=64,64
+    rad=dims[0]/8.0*scale
+    maxrad=dims[0]/2.5*scale
     for i in xrange(nobj):
         flux = np.random.uniform(low=0.5, high=1.5)
 
         r50=np.random.uniform(low=0.5, high=2.0)
-        dx,dy=np.random.uniform(low=-3.0, high=3.0, size=2)
+        #dx,dy=np.random.uniform(low=-3.0, high=3.0, size=2)
+        dx,dy=np.random.normal(scale=rad, size=2).clip(min=-maxrad, max=maxrad)
+
         g1d,g2d=np.random.normal(scale=0.2, size=2).clip(max=0.5)
         g1b=0.5*g1d+np.random.normal(scale=0.02)
         g2b=0.5*g2d+np.random.normal(scale=0.02)
