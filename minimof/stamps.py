@@ -270,6 +270,9 @@ def test(dim=2000):
 
     nobj=4
     nknots=100
+    knot_flux_frac=0.001
+    nknots_low, nknots_high=1,100
+
     nband=3
     noises=[0.0005,0.001,0.0015]
     scale=0.263
@@ -277,26 +280,36 @@ def test(dim=2000):
     psf=galsim.Gaussian(fwhm=0.9)
     all_band_obj=[]
     dims=64,64
-    rad=dims[0]/8.0*scale
-    maxrad=dims[0]/2.5*scale
-    for i in xrange(nobj):
-        flux = np.random.uniform(low=0.5, high=1.5)
+    flux_low, flux_high=0.5,1.5
+    r50_low,r50_high=0.1,2.0
+    #dims=256,256
+    #flux_low, flux_high=50.0,50.0
+    #r50_low,r50_high=4.0,4.0
 
-        r50=np.random.uniform(low=0.5, high=2.0)
+    fracdev_low, fracdev_high=0.001,0.99
+
+    sigma=dims[0]/2.0/4.0*scale
+    maxrad=dims[0]/2.0/2.0 * scale
+    for i in xrange(nobj):
+
+        nknots=int(np.random.uniform(low=nknots_low, high=nknots_high))
+
+        r50=np.random.uniform(low=r50_low, high=r50_high)
+        flux = np.random.uniform(low=flux_low, high=flux_high)
+
         #dx,dy=np.random.uniform(low=-3.0, high=3.0, size=2)
-        dx,dy=np.random.normal(scale=rad, size=2).clip(min=-maxrad, max=maxrad)
+        dx,dy=np.random.normal(scale=sigma, size=2).clip(min=-maxrad, max=maxrad)
 
         g1d,g2d=np.random.normal(scale=0.2, size=2).clip(max=0.5)
         g1b=0.5*g1d+np.random.normal(scale=0.02)
         g2b=0.5*g2d+np.random.normal(scale=0.02)
 
-        fracdev=np.random.uniform(low=0.0, high=1.0)
-        fracknots=np.random.uniform(low=0.0, high=1.0)
+        fracdev=np.random.uniform(low=fracdev_low, high=fracdev_high)
 
-        flux_bulge=fracdev*flux
-        flux_disk_total=(1-fracdev)*flux
-        flux_disk = (1-fracknots)*flux_disk_total
-        flux_knots = fracknots*flux_disk_total
+        flux_bulge = fracdev*flux
+        flux_disk  = (1-fracdev)*flux
+        flux_knots = nknots*knot_flux_frac*flux_disk
+        print("fracdev:",fracdev,"nknots:",nknots)
 
         bulge_colors = (
             flux_bulge*(np.array([0.5, 1.0, 1.5]) \
@@ -304,7 +317,7 @@ def test(dim=2000):
                        )
         )
         disk_colors = (
-            flux_disk*(np.array([1.0, 1.0, 0.5]) \
+            flux_disk*(np.array([1.25, 1.0, 0.75]) \
                        + np.random.uniform(low=-0.1, high=0.1, size=3)
                       )
         )
@@ -316,14 +329,17 @@ def test(dim=2000):
 
         bulge_obj = galsim.DeVaucouleurs(
             half_light_radius=r50
-        ).shift(dx=dx, dy=dy).shear(g1=g1b,g2=g2b)
+        ).shear(g1=g1b,g2=g2b)
+
         disk_obj = galsim.Exponential(
             half_light_radius=r50
-        ).shift(dx=dx, dy=dy).shear(g1=g1d,g2=g2d)
+        ).shear(g1=g1d,g2=g2d)
+
         knots_obj = galsim.RandomWalk(
             npoints=nknots,
-            half_light_radius=r50
-        ).shift(dx=dx, dy=dy).shear(g1=g1d,g2=g2d)
+            profile=disk_obj,
+            #half_light_radius=r50
+        )#.shear(g1=g1d,g2=g2d)
 
 
         band_objs = []
@@ -331,8 +347,10 @@ def test(dim=2000):
             band_disk=disk_obj.withFlux(disk_colors[band])
             band_bulge=bulge_obj.withFlux(bulge_colors[band])
             band_knots=knots_obj.withFlux(knots_colors[band])
+            #print(band_disk.flux, band_bulge.flux, band_knots.flux)
 
-            obj = galsim.Sum(band_disk, band_bulge, band_knots)
+            obj = galsim.Sum(band_disk, band_bulge, band_knots).shift(dx=dx, dy=dy)
+            #obj = galsim.Sum(band_disk, band_bulge).shift(dx=dx, dy=dy)
             obj=galsim.Convolve(obj, psf)
             band_objs.append( obj )
 
@@ -379,6 +397,7 @@ def test(dim=2000):
         [rgb,
          mer.seg,
          mer.detim],
+        titles=['image','seg','detim'],
         dims=[dim, dim],
     )
 
