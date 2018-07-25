@@ -264,11 +264,12 @@ class MEDSifier(object):
         self.seg=seg
         self.cat=cat
 
-def test():
+def test(dim=2000):
     import galsim
     import images
 
     nobj=4
+    nknots=10
     nband=3
     noises=[0.0005,0.001,0.0015]
     scale=0.263
@@ -277,23 +278,60 @@ def test():
     all_band_obj=[]
     dims=64,64
     for i in xrange(nobj):
+        flux = np.random.uniform(low=0.5, high=1.5)
+
         r50=np.random.uniform(low=0.5, high=2.0)
         dx,dy=np.random.uniform(low=-3.0, high=3.0, size=2)
-        g1,g2=np.random.normal(scale=0.2, size=2).clip(max=0.5)
+        g1d,g2d=np.random.normal(scale=0.2, size=2).clip(max=0.5)
+        g1b=0.5*g1d+np.random.normal(scale=0.02)
+        g2b=0.5*g2d+np.random.normal(scale=0.02)
 
-        tmp=np.random.uniform(low=0.0, high=1.0)
-        if tmp < 0.5:
-            colors = np.array([0.5, 1.0, 1.5]) \
-                    + np.random.uniform(low=-0.1, high=0.1, size=3)
-            obj = galsim.DeVaucouleurs(half_light_radius=r50).shift(dx=dx, dy=dy).shear(g1=g1,g2=g2)
-        else:
-            colors = np.array([1.5, 1.0, 0.5]) \
-                    + np.random.uniform(low=-0.1, high=0.1, size=3)
-            obj = galsim.Exponential(half_light_radius=r50).shift(dx=dx, dy=dy).shear(g1=g1,g2=g2)
+        fracdev=np.random.uniform(low=0.0, high=1.0)
+        fracknots=np.random.uniform(low=0.0, high=1.0)
 
-        obj=galsim.Convolve(obj, psf)
+        flux_bulge=fracdev*flux
+        flux_disk_total=(1-fracdev)*flux
+        flux_disk = (1-fracknots)*flux_disk_total
+        flux_knots = fracknots*flux_disk_total
 
-        band_objs = [obj.withFlux(colors[j]) for j in xrange(nband)]
+        bulge_colors = (
+            flux_bulge*(np.array([0.5, 1.0, 1.5]) \
+                        + np.random.uniform(low=-0.1, high=0.1, size=3)
+                       )
+        )
+        disk_colors = (
+            flux_disk*(np.array([1.0, 1.0, 0.5]) \
+                       + np.random.uniform(low=-0.1, high=0.1, size=3)
+                      )
+        )
+        knots_colors = (
+            flux_knots*(np.array([1.5, 1.0, 0.5]) \
+                        + np.random.uniform(low=-0.1, high=0.1, size=3)
+                       )
+        )
+
+        bulge_obj = galsim.DeVaucouleurs(
+            half_light_radius=r50
+        ).shift(dx=dx, dy=dy).shear(g1=g1b,g2=g2b)
+        disk_obj = galsim.Exponential(
+            half_light_radius=r50
+        ).shift(dx=dx, dy=dy).shear(g1=g1d,g2=g2d)
+        knots_obj = galsim.RandomWalk(
+            npoints=nknots,
+            half_light_radius=r50
+        ).shift(dx=dx, dy=dy).shear(g1=g1d,g2=g2d)
+
+
+        band_objs = []
+        for band in xrange(nband):
+            band_disk=disk_obj.withFlux(disk_colors[band])
+            band_bulge=bulge_obj.withFlux(bulge_colors[band])
+            band_knots=knots_obj.withFlux(knots_colors[band])
+
+            obj = galsim.Sum(band_disk, band_bulge, band_knots)
+            obj=galsim.Convolve(obj, psf)
+            band_objs.append( obj )
+
 
         all_band_obj.append( band_objs )
 
@@ -337,7 +375,7 @@ def test():
         [rgb,
          mer.seg,
          mer.detim],
-        dims=[2000,2000],
+        dims=[dim, dim],
     )
 
     mg=mer.get_meds(0)
