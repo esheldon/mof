@@ -1,5 +1,6 @@
 """
 TODO:
+    plot position in stamp
     add uberseg
     explore box sizes
         look preety good for isolated objects
@@ -289,6 +290,14 @@ def test(dim=2000):
 
     fracdev_low, fracdev_high=0.001,0.99
 
+    bulge_colors = np.array([0.5, 1.0, 1.5])
+    disk_colors = np.array([1.25, 1.0, 0.75])
+    knots_colors = np.array([1.5, 1.0, 0.5])
+
+    #bulge_colors /= bulge_colors.sum()
+    #disk_colors /= disk_colors.sum()
+    #knots_colors /= knots_colors.sum()
+
     sigma=dims[0]/2.0/4.0*scale
     maxrad=dims[0]/2.0/2.0 * scale
     for i in xrange(nobj):
@@ -312,22 +321,6 @@ def test(dim=2000):
         flux_knots = nknots*knot_flux_frac*flux_disk
         print("fracdev:",fracdev,"nknots:",nknots)
 
-        bulge_colors = (
-            flux_bulge*(np.array([0.5, 1.0, 1.5]) \
-                        + np.random.uniform(low=-0.1, high=0.1, size=3)
-                       )
-        )
-        disk_colors = (
-            flux_disk*(np.array([1.25, 1.0, 0.75]) \
-                       + np.random.uniform(low=-0.1, high=0.1, size=3)
-                      )
-        )
-        knots_colors = (
-            flux_knots*(np.array([1.5, 1.0, 0.5]) \
-                        + np.random.uniform(low=-0.1, high=0.1, size=3)
-                       )
-        )
-
         bulge_obj = galsim.DeVaucouleurs(
             half_light_radius=r50
         ).shear(g1=g1b,g2=g2b)
@@ -345,9 +338,9 @@ def test(dim=2000):
 
         band_objs = []
         for band in xrange(nband):
-            band_disk=disk_obj.withFlux(disk_colors[band])
-            band_bulge=bulge_obj.withFlux(bulge_colors[band])
-            band_knots=knots_obj.withFlux(knots_colors[band])
+            band_disk=disk_obj.withFlux(flux_disk*disk_colors[band])
+            band_bulge=bulge_obj.withFlux(flux_bulge*bulge_colors[band])
+            band_knots=knots_obj.withFlux(flux_knots*knots_colors[band])
             #print(band_disk.flux, band_bulge.flux, band_knots.flux)
 
             obj = galsim.Sum(band_disk, band_bulge, band_knots).shift(dx=dx, dy=dy)
