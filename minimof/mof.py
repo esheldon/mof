@@ -1,6 +1,7 @@
 """
 assumes the psf is constant across the input larger image
 """
+from __future__ import print_function
 import numpy as np
 import ngmix
 from ngmix.gmix import GMix, GMixModel
@@ -12,6 +13,7 @@ from ngmix.gmix import (
     get_model_ngauss,
     get_model_npars,
 )
+from ngmix.observation import Observation,ObsList,MultiBandObsList,get_mb_obs
 
 # weaker than usual
 _default_lm_pars={
@@ -120,7 +122,7 @@ class MOF(LMSimple):
 
         if band is None:
             # get all bands and epochs
-            output=ngmix.MultiBandObsList()
+            output=MultiBandObsList()
             for band in range(self.nband):
                 obslist=self.make_corrected_obs(
                     index,
@@ -133,7 +135,7 @@ class MOF(LMSimple):
             # band specified, but not the observation, so get all
             # epochs for this band
 
-            output=ngmix.ObsList()
+            output=ObsList()
 
             nepoch = len(self.obs[band])
             for obsnum in range(nepoch):
@@ -154,7 +156,7 @@ class MOF(LMSimple):
 
             if ref_obs.has_psf():
                 po=ref_obs.psf
-                psf_obs=ngmix.Observation(
+                psf_obs=Observation(
                     po.image.copy(),
                     weight=po.weight.copy(),
                     jacobian=po.jacobian.copy(),
@@ -173,7 +175,7 @@ class MOF(LMSimple):
                 row,col = gmi.get_cen()
                 jacob.set_cen(row=row, col=col)
 
-            output = ngmix.Observation(
+            output = Observation(
                 image,
                 weight=ref_obs.weight.copy(),
                 jacobian=jacob,
@@ -296,11 +298,14 @@ class MOFStamps(MOF):
         list_of_obs is not an ObsList, it is a python list of 
         Observation/ObsList/MultiBandObsList
         """
-        super(LMSimple,self).__init__(obs, model, **keys)
+        #super(LMSimple,self).__init__(obs, model, **keys)
+
+        self._set_all_obs(list_of_obs)
+        self._setup_nbrs()
+        return
 
         assert self.prior is not None,"send a prior"
-        self.nobj=len(list_of_obs)
-
+        self.nobj=len(self.list_of_obs)
 
         if model=='bdf':
             self.npars_per = 6+self.nband
@@ -330,7 +335,69 @@ class MOFStamps(MOF):
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
+    def _set_all_obs(self, list_of_obs):
 
+        lobs=[]
+        for i,o in enumerate(list_of_obs):
+            mbo=get_mb_obs(o)
+            if i==0:
+                self.nband=len(mbo)
+            else:
+                assert len(mbo)==self.nband,"all obs must have same number of bands"
+            lobs.append(mbo)
+
+        self.list_of_obs = lobs
+
+    def _setup_nbrs(self):
+        """
+        determine which neighboring objects should be
+        rendered into each stamp
+        """
+        for iobj,mbo in enumerate(self.list_of_obs):
+            for band in xrange(self.nband):
+                band_obslist=mbo[band]
+
+                for icut,obs in enumerate(band_obslist):
+                    nbr_data = self._get_nbr_data(obs, iobj, band)
+                    print('    obj %d band %d cut %d found %d '
+                          'nbrs' % (iobj,band,icut,len(nbr_data)))
+
+    def _get_nbr_data(self, obs, iobj, band):
+        """
+        TODO trim list to those that we expect to contribute flux
+        """
+
+        meta=obs.meta
+
+        nbr_list=[]
+        # now look for neighbors that were found in
+        # this image
+        file_id=obs.meta['file_id']
+        for inbr,nbr_mbo in enumerate(self.list_of_obs):
+            if inbr==iobj:
+                continue
+
+            nbr_band_obslist=nbr_mbo[band]
+            for nbr_obs in nbr_band_obslist:
+                # only keep the ones in the same image
+                # will want to trim later to ones expected to contribute
+                # flux
+                nbr_meta=nbr_obs.meta
+                if nbr_meta['file_id']==file_id:
+                    row = nbr_meta['orig_row'] - meta['orig_start_row']
+                    col = nbr_meta['orig_col'] - meta['orig_start_col']
+                    
+                    # this makes a copy
+                    jacobian=obs.jacobian
+                    jacobian.set_cen(row=row, col=col)
+
+                    nbr_data=dict(
+                        index=inbr,
+                        jacobian=jacobian,
+                    )
+                    nbr_list.append(nbr_data)
+
+        return nbr_list
 
 
 # TODO move to ngmix

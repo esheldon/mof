@@ -14,6 +14,8 @@ import esutil as eu
 import meds
 import ngmix
 
+from .mof import MOFStamps
+
 class MEDSInterface(meds.MEDS):
     def __init__(self, image, weight, seg, bmask, cat):
         self._image_data=dict(
@@ -140,6 +142,7 @@ class MEDSInterface(meds.MEDS):
             number=c['number'][iobj],
             icut=icutout,
             cutout_index=icutout,
+            file_id=c['file_id'][iobj,icutout],
             orig_row=c['orig_row'][iobj, icutout],
             orig_col=c['orig_col'][iobj, icutout],
             orig_start_row=c['orig_start_row'][iobj, icutout],
@@ -522,13 +525,22 @@ def test(dim=2000):
     nobj=mg.size
 
     imlist=[]
+    list_of_obs=[]
     for i in xrange(nobj):
 
         img=mg.get_cutout(i,0)
         imr=mr.get_cutout(i,0)
         imi=mi.get_cutout(i,0)
-        gobs=mg.get_obs(i,0,weight_type='uberseg')
+
         gobslist=mg.get_obslist(i,weight_type='uberseg')
+        robslist=mr.get_obslist(i,weight_type='uberseg')
+        iobslist=mi.get_obslist(i,weight_type='uberseg')
+        mbo=ngmix.MultiBandObsList()
+        mbo.append(gobslist)
+        mbo.append(robslist)
+        mbo.append(iobslist)
+
+        list_of_obs.append(mbo)
 
         rgb=images.get_color_image(
             #imi*fac,imr*fac,img*fac,
@@ -539,6 +551,12 @@ def test(dim=2000):
         )
         rgb *= 1.0/rgb.max()
         imlist.append(rgb)
+
+    mof_fitter=MOFStamps(
+        list_of_obs,
+        "bdf",
+    )
+    return
 
     #images.view(rgb)
     tab[0,1]=images.view_mosaic(imlist,show=False)
@@ -555,4 +573,5 @@ def test(dim=2000):
     #images.view(rgb)
     images.view_mosaic(imlist)
 
+    
 
