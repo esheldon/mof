@@ -220,6 +220,27 @@ class MOF(LMSimple):
         return gm.make_image(obs.image.shape, jacobian=obs.jacobian)
 
 
+    def get_object_band_pars(self, pars_in, iobj, band):
+        nbper=self.nband_pars_per
+
+        pars=np.zeros(nbper)
+
+        # either i*6 or i*7
+        beg=0
+        # either 5 or 6
+        end=0+nbper-1
+
+        ibeg = iobj*self.npars_per
+        iend = ibeg+nbper-1
+
+        pars[beg:end] = pars_in[ibeg:iend]
+
+        # now copy the flux
+        pars[end] = pars_in[iend+band]
+
+        return pars
+
+
     def get_band_pars(self, pars_in, band):
         """
         Get linear pars for the specified band
@@ -227,7 +248,6 @@ class MOF(LMSimple):
 
         pars=self._band_pars
         nbper=self.nband_pars_per
-        nper=self.npars_per
 
         for i in range(self.nobj):
             # copy cen1,cen2,g1,g2,T
@@ -335,6 +355,50 @@ class MOFStamps(MOF):
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
+    def _init_gmix_all(self, pars):
+        """
+        input pars are in linear space
+
+        initialize the list of lists of gaussian mixtures
+        """
+
+
+        all_gmix0=[]
+        all_gmix=[]
+        for iobj in xrange(self.nobj):
+            mbobs=self.list_of_obs[i]
+
+
+            gmix_all0 = MultiBandGMixList()
+            gmix_all  = MultiBandGMixList()
+
+            for band,obs_list in enumerate(self.obs):
+                gmix_list0=GMixList()
+                gmix_list=GMixList()
+
+                band_pars=self.get_object_band_pars(pars, iobj, band)
+
+                for obs in obs_list:
+                    assert obs.has_psf_gmix(),"psfs must be set"
+
+                    # make this make a single model not huge model
+                    stop
+                    gm0 = self._make_model(band_pars)
+                    psf_gmix=obs.psf.gmix
+                    gm=gm0.convolve(psf_gmix)
+
+                    gmix_list0.append(gm0)
+                    gmix_list.append(gm)
+
+                gmix_all0.append(gmix_list0)
+                gmix_all.append(gmix_list)
+
+            all_gmix0.append( gmix_all0 )
+            all_gmix.append( gmix_all )
+
+        self.all_gmix0=all_gmix0
+        self.all_gmix=all_gmix
+
     def _set_all_obs(self, list_of_obs):
 
         lobs=[]
@@ -359,6 +423,7 @@ class MOFStamps(MOF):
 
                 for icut,obs in enumerate(band_obslist):
                     nbr_data = self._get_nbr_data(obs, iobj, band)
+                    obs.meta['nbr_data']=nbr_data
                     print('    obj %d band %d cut %d found %d '
                           'nbrs' % (iobj,band,icut,len(nbr_data)))
 
