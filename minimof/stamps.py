@@ -136,8 +136,8 @@ class MEDSifier(object):
 
     def _run_sep(self):
         import sep
-        #THRESH=1.0 # in sky sigma
-        THRESH=1.5 # in sky sigma
+        THRESH=1.2 # in sky sigma
+        #THRESH=1.5 # in sky sigma
         objs, seg = sep.extract(
             self.detim,
             THRESH,
@@ -266,6 +266,7 @@ class MEDSifier(object):
 
 def test(dim=2000):
     import galsim
+    import biggles
     import images
 
     nobj=4
@@ -382,6 +383,7 @@ def test(dim=2000):
             )
         )
 
+    tab=biggles.Table(1,2)
     rgb=images.get_color_image(
         #imi*fac,imr*fac,img*fac,
         dlist[2]['image'].transpose(),
@@ -393,12 +395,13 @@ def test(dim=2000):
     #images.view(rgb)
  
     mer=MEDSifier(dlist)
-    images.view_mosaic(
+    tab[0,0] = images.view_mosaic(
         [rgb,
          mer.seg,
          mer.detim],
         titles=['image','seg','detim'],
-        dims=[dim, dim],
+        show=False,
+        #dims=[dim, dim],
     )
 
     mg=mer.get_meds(0)
@@ -424,4 +427,6 @@ def test(dim=2000):
         imlist.append(rgb)
 
     #images.view(rgb)
-    images.view_mosaic(imlist)
+    tab[0,1]=images.view_mosaic(imlist,show=False)
+
+    tab.show(width=dim*2, height=dim)
