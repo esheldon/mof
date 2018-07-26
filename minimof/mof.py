@@ -290,6 +290,48 @@ class MOF(LMSimple):
         """
         return GMixModelMulti(band_pars, self.model)
 
+class MOFStamps(MOF):
+    def __init__(self, list_of_obs, model, **keys):
+        """
+        list_of_obs is not an ObsList, it is a python list of 
+        Observation/ObsList/MultiBandObsList
+        """
+        super(LMSimple,self).__init__(obs, model, **keys)
+
+        assert self.prior is not None,"send a prior"
+        self.nobj=len(list_of_obs)
+
+
+        if model=='bdf':
+            self.npars_per = 6+self.nband
+            self.nband_pars_per=7
+
+            # center1 + center2 + shape + T + fracdev + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+        else:
+            self.npars_per = 5+self.nband
+            self.nband_pars_per=6
+            self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+
+            # center1 + center2 + shape + T + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+
+        self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+
+        self._set_fdiff_size()
+
+        self.npars = self.nobj*self.npars_per
+
+
+        self.lm_pars={}
+        self.lm_pars.update(_default_lm_pars)
+
+        lm_pars=keys.get('lm_pars',None)
+        if lm_pars is not None:
+            self.lm_pars.update(lm_pars)
+
+
+
 
 # TODO move to ngmix
 class GMixModelMulti(GMix):

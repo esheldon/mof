@@ -11,13 +11,16 @@ TODO:
 from __future__ import print_function
 import numpy as np
 import esutil as eu
+import meds
+import ngmix
 
-class MEDSInterface(object):
-    def __init__(self, image, weight, seg, cat):
+class MEDSInterface(meds.MEDS):
+    def __init__(self, image, weight, seg, bmask, cat):
         self._image_data=dict(
             image=image,
             weight=weight,
             seg=seg,
+            bmask=bmask,
         )
         self._cat=cat
 
@@ -61,6 +64,97 @@ class MEDSInterface(object):
             scol:ecol,
         ].copy()
 
+    def get_obslist(self, iobj, weight_type='weight'):
+        """
+        get an ngmix ObsList for all observations
+
+        parameters
+        ----------
+        iobj:
+            Index of the object
+        weight_type: string, optional
+            Weight type. can be one of
+                'weight': the actual weight map
+                'uberseg': uberseg modified weight map
+            Default is 'weight'
+
+        returns
+        -------
+        an ngmix ObsList
+        """
+
+        import ngmix
+        obslist=ngmix.ObsList()
+        for icut in xrange(self._cat['ncutout'][iobj]):
+            obs=self.get_obs(iobj, icut, weight_type=weight_type)
+            obslist.append(obs)
+
+        return obslist
+
+    def get_obs(self, iobj, icutout, weight_type='weight'):
+        """
+        get an ngmix Observation
+
+        parameters
+        ----------
+        iobj:
+            Index of the object
+        icutout:
+            Index of the cutout for this object.
+        weight_type: string, optional
+            Weight type. can be one of
+                'weight': the actual weight map
+                'uberseg': uberseg modified weight map
+            Default is 'weight'
+
+        returns
+        -------
+        an ngmix Observation
+        """
+
+        import ngmix
+        im=self.get_cutout(iobj, icutout, type='image')
+        bmask=self.get_cutout(iobj, icutout, type='bmask')
+        jd=self.get_jacobian(iobj, icutout)
+
+
+        if weight_type=='uberseg':
+            wt=self.get_uberseg(iobj, icutout)
+        elif weight_type=='weight':
+            wt=self.get_cutout(iobj, icutout, type='weight')
+        else:
+            raise ValueError("bad weight type '%s'" % weight_type)
+
+        jacobian=ngmix.Jacobian(
+            row=jd['row0'],
+            col=jd['col0'],
+            dudrow=jd['dudrow'],
+            dudcol=jd['dudcol'],
+            dvdrow=jd['dvdrow'],
+            dvdcol=jd['dvdcol'],
+        )
+        c=self._cat
+        meta=dict(
+            id=c['id'][iobj],
+            index=iobj,
+            number=c['number'][iobj],
+            icut=icutout,
+            cutout_index=icutout,
+            orig_row=c['orig_row'][iobj, icutout],
+            orig_col=c['orig_col'][iobj, icutout],
+            orig_start_row=c['orig_start_row'][iobj, icutout],
+            orig_start_col=c['orig_start_col'][iobj, icutout],
+            orig_end_row=c['orig_end_row'][iobj, icutout],
+            orig_end_col=c['orig_end_col'][iobj, icutout],
+        )
+        return ngmix.Observation(
+            im,
+            weight=wt,
+            bmask=bmask,
+            meta=meta,
+            jacobian=jacobian,
+        )
+        
     @property
     def size(self):
         return self._cat.size
@@ -112,6 +206,7 @@ class MEDSifier(object):
             d['image'],
             d['weight'],
             self.seg,
+            self.bmask,
             self.cat,
         )
 
@@ -193,6 +288,8 @@ class MEDSifier(object):
 
         ncut=2 # need this to make sure array
         new_dt=[
+            ('id','i8'),
+            ('number','i4'),
             ('ncutout','i4'),
             ('flux_auto','f4'),
             ('fluxerr_auto','f4'),
@@ -200,6 +297,7 @@ class MEDSifier(object):
             ('isoarea_image','f4'),
             ('iso_radius','f4'),
             ('box_size','i4'),
+            ('file_id','i8',ncut),
             ('orig_row','f4',ncut),
             ('orig_col','f4',ncut),
             ('orig_start_row','i8',ncut),
@@ -208,12 +306,23 @@ class MEDSifier(object):
             ('orig_end_col','i8',ncut),
             ('cutout_row','f4',ncut),
             ('cutout_col','f4',ncut),
+            ('dudrow','f8',ncut),
+            ('dudcol','f8',ncut),
+            ('dvdrow','f8',ncut),
+            ('dvdcol','f8',ncut),
         ]
         cat=eu.numpy_util.add_fields(objs, new_dt)
+        cat['id'] = np.arange(cat.size)
+        cat['number'] = np.arange(1,cat.size+1)
         cat['ncutout'] = 1
         cat['flux_auto'] = flux_auto
         cat['fluxerr_auto'] = fluxerr_auto
         cat['flux_radius'] = flux_radius
+        wcs=self.datalist[0]['wcs']
+        cat['dudrow'][:,0] = wcs.dudy
+        cat['dudcol'][:,0] = wcs.dudx
+        cat['dvdrow'][:,0] = wcs.dvdy
+        cat['dvdcol'][:,0] = wcs.dvdx
 
 
         # use the number of pixels in the seg map as the iso area
@@ -263,6 +372,7 @@ class MEDSifier(object):
 
 
         self.seg=seg
+        self.bmask=np.zeros(seg.shape, dtype='i4')
         self.cat=cat
 
 def test(dim=2000):
@@ -271,6 +381,7 @@ def test(dim=2000):
     import images
 
     nobj=4
+    #nobj=2
     nknots=100
     knot_flux_frac=0.001
     nknots_low, nknots_high=1,100
@@ -351,12 +462,19 @@ def test(dim=2000):
 
         all_band_obj.append( band_objs )
 
+    jacob=ngmix.DiagonalJacobian(
+        row=0,
+        col=0,
+        scale=scale,
+    )
+    wcs=jacob.get_galsim_wcs()
+
     dlist=[]
     for band in xrange(nband):
         band_objects = [ o[band] for o in all_band_obj ]
         obj = galsim.Sum(band_objects)
 
-        im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
+        im = obj.drawImage(nx=dims[1], ny=dims[0], wcs=wcs).array
         #if band==0:
         #    im = obj.drawImage(scale=scale).array
         #    dims=im.shape
@@ -372,6 +490,7 @@ def test(dim=2000):
                 image=im,
                 weight=wt,
                 noise=noises[band],
+                wcs=wcs,
                 pixel_scale=scale,
             )
         )
@@ -408,6 +527,8 @@ def test(dim=2000):
         img=mg.get_cutout(i,0)
         imr=mr.get_cutout(i,0)
         imi=mi.get_cutout(i,0)
+        gobs=mg.get_obs(i,0,weight_type='uberseg')
+        gobslist=mg.get_obslist(i,weight_type='uberseg')
 
         rgb=images.get_color_image(
             #imi*fac,imr*fac,img*fac,
@@ -423,3 +544,15 @@ def test(dim=2000):
     tab[0,1]=images.view_mosaic(imlist,show=False)
 
     tab.show(width=dim*2, height=dim)
+
+
+    imlist=[]
+    for i in xrange(nobj):
+
+        im=mg.get_uberseg(i,0)
+        imlist.append(im)
+
+    #images.view(rgb)
+    images.view_mosaic(imlist)
+
+
