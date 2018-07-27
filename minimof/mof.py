@@ -16,6 +16,7 @@ from ngmix.gmix import (
 from ngmix.observation import Observation,ObsList,MultiBandObsList,get_mb_obs
 from ngmix.gmix import GMixList,MultiBandGMixList
 from ngmix.gexceptions import GMixRangeError
+from ngmix.priors import LOWVAL
 
 # weaker than usual
 _default_lm_pars={
@@ -435,6 +436,9 @@ class MOFStamps(MOF):
         self._pixels_list=pixels_list
         self._gmix_data_list=gmix_data_list
 
+
+    def get_fit_stats(self, pars):
+        return {}
 
     def _calc_fdiff(self, pars):
         """

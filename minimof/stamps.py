@@ -1,9 +1,12 @@
 """
 TODO:
     plot position in stamp
-    add uberseg
+    plot objects with residuals
+    fit statistics
+        s/n, chi2/dof, etc.
+        probably easiest to calculate s/n of model, roundified
     explore box sizes
-        look preety good for isolated objects
+        maybe larger
     explore threshold
         how many spurious?  maybe test with nothing images
 
