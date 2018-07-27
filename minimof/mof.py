@@ -398,6 +398,122 @@ class MOFStamps(MOF):
 
         self._result=result
 
+    def make_corrected_obs(self, index, band=None, obsnum=None):
+        """
+        get observation(s) for the given object and band
+        with all the neighbors subtracted from the image
+
+        parameters
+        ----------
+        index: number
+            The object index.
+        band: number, optional
+            The optional band.  If not sent, all bands and epochs are returned
+            in a MultiBandObsList
+        obsnum: number, optional
+            If band= is sent, you can also send obsnum to pick a particular
+            epoch/observation
+        """
+
+        if band is None:
+            # get all bands and epochs
+            output=MultiBandObsList()
+            for band in range(self.nband):
+                obslist=self.make_corrected_obs(
+                    index,
+                    band=band,
+                )
+                output.append(obslist)
+
+        elif obsnum is None:
+            # band specified, but not the observation, so get all
+            # epochs for this band
+
+            output=ObsList()
+
+            obslist = self.list_of_obs[index][band]
+            nepoch = len(obslist) 
+            for obsnum in range(nepoch):
+                obs = self.make_corrected_obs(
+                    index,
+                    band=band,
+                    obsnum=obsnum,
+                )
+                output.append(obs)
+
+        else:
+            # band and obsnum specified
+
+            ref_obs = self.list_of_obs[index][band][obsnum]
+
+            image =self.make_corrected_image(index, band=band, obsnum=obsnum)
+
+            po=ref_obs.psf
+            psf_obs=Observation(
+                po.image.copy(),
+                weight=po.weight.copy(),
+                jacobian=po.jacobian.copy(),
+            )
+            psf_obs.gmix =  po.gmix
+
+            jacob = ref_obs.jacobian.copy()
+
+            output = Observation(
+                image,
+                weight=ref_obs.weight.copy(),
+                jacobian=jacob,
+                psf=psf_obs,
+            )
+
+        return output
+
+ 
+    def make_corrected_image(self, index, band=0, obsnum=0):
+        """
+        get an observation for the given object and band
+        with all the neighbors subtracted from the image
+        """
+        import images
+        pars=self.get_result()['pars']
+
+        ref_obs = self.list_of_obs[index][band][obsnum]
+        psf_gmix=ref_obs.psf.gmix
+        jacob=ref_obs.jacobian
+
+        image = ref_obs.image.copy()
+        #images.view(image,title='original image',scale=True)
+
+        nbr_data=ref_obs.meta['nbr_data']
+        if len(nbr_data) > 0:
+            for nbr in nbr_data:
+                nbr_pars = self.get_object_band_pars(
+                    pars,
+                    nbr['index'],
+                    band,
+                )
+
+                # the current pars [v,u,..] are relative to
+                # fiducial position.  we need to add these to
+                # the fiducial for the rendering within
+                # the stamp of the central
+
+                nbr_pars[0] += nbr['v0']
+                nbr_pars[1] += nbr['u0']
+
+                gm0 = self._make_model(nbr_pars)
+                gm=gm0.convolve(psf_gmix)
+
+                modelim = gm.make_image(image.shape, jacobian=jacob)
+                #images.view(modelim,title='model image',scale=True)
+
+                image -= modelim
+            #images.view(image,title='correctedimage',scale=True)
+
+        #if 'q'==raw_input("band %s hit a key: " % band):
+        #    stop
+
+        return image
+
     def _set_totpix(self):
         """
         Make sure the data are consistent.

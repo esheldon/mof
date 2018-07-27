@@ -502,8 +502,8 @@ def test(dim=2000):
             band_knots=knots_obj.withFlux(flux_knots*knots_colors[band])
             #print(band_disk.flux, band_bulge.flux, band_knots.flux)
 
-            obj = galsim.Sum(band_disk, band_bulge, band_knots).shift(dx=dx, dy=dy)
-            #obj = galsim.Sum(band_disk, band_bulge).shift(dx=dx, dy=dy)
+            #obj = galsim.Sum(band_disk, band_bulge, band_knots).shift(dx=dx, dy=dy)
+            obj = galsim.Sum(band_disk, band_bulge).shift(dx=dx, dy=dy)
             obj=galsim.Convolve(obj, psf)
             band_objs.append( obj )
 
@@ -611,11 +611,10 @@ def test(dim=2000):
     band=2
     guess=mof.get_stamp_guesses(list_of_obs, band, "bdf", rng)
     mof_fitter.go(guess)
-    return
 
     #images.view(rgb)
+    '''
     tab[0,1]=images.view_mosaic(imlist,show=False)
-
     tab.show(width=dim*2, height=dim)
 
 
@@ -627,6 +626,34 @@ def test(dim=2000):
 
     #images.view(rgb)
     images.view_mosaic(imlist)
+    '''
 
-    
+    # corrected images
+    imlist=[]
+    for iobj, mobs in enumerate(list_of_obs):
+        cmobs = mof_fitter.make_corrected_obs(iobj)
+
+        gim=images.make_combined_mosaic(
+            [mobs[0][0].image, cmobs[0][0].image],
+        )
+        rim=images.make_combined_mosaic(
+            [mobs[1][0].image, cmobs[1][0].image],
+        )
+        iim=images.make_combined_mosaic(
+            [mobs[2][0].image, cmobs[2][0].image],
+        )
+
+        rgb=images.get_color_image(
+            iim.transpose(),
+            rim.transpose(),
+            gim.transpose(),
+            nonlinear=0.1,
+        )
+        rgb *= 1.0/rgb.max()
+        imlist.append(rgb)
+
+
+    plt=images.view_mosaic(imlist,show=False)
+    tab[0,1]=plt
+    tab.show(width=dim*2, height=dim)
 
