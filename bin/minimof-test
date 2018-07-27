@@ -20,6 +20,11 @@ parser=ArgumentParser()
 parser.add_argument('config_file',help='config file name')
 parser.add_argument('seed',type=int,help='seed for sim')
 parser.add_argument('ntrial',type=int,help='number to simulate')
+parser.add_argument('--stamps',
+                    action='store_true',
+                    help='use postage stamps')
+
+
 
 parser.add_argument('--save',
                     action='store_true',
@@ -217,12 +222,33 @@ def main():
             sim.rng,
         )
 
-        fitter=minimof.MOF(
-            sim.obs,
-            config['fit_model'],
-            nobj,
-            prior=prior,
-        )
+        if args.stamps:
+            wcs=sim.obs.jacobian.get_galsim_wcs()
+            dlist=[
+                dict(
+                    image=sim.obs.image,
+                    weight=sim.obs.weight,
+                    wcs=wcs,
+                )
+            ]
+            mi=minimof.stamps.MEDSifier(dlist)
+            m=m.get_meds(0)
+            list_of_obs=[m.get_obslist(i) for i in xrange(m.size)]
+
+            fitter=minimof.MOFStamps(
+                list_of_obs,
+                config['fit_model'],
+                prior=prior,
+            )
+
+
+        else:
+            fitter=minimof.MOF(
+                sim.obs,
+                config['fit_model'],
+                nobj,
+                prior=prior,
+            )
 
         for itry in range(ntry):
             guess = get_guess(objects, sim.obs.jacobian, sim.rng)

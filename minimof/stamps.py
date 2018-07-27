@@ -14,7 +14,7 @@ import esutil as eu
 import meds
 import ngmix
 
-from .mof import MOFStamps
+from . import mof
 
 class MEDSInterface(meds.MEDS):
     def __init__(self, image, weight, seg, bmask, cat):
@@ -91,6 +91,8 @@ class MEDSInterface(meds.MEDS):
             obs=self.get_obs(iobj, icut, weight_type=weight_type)
             obslist.append(obs)
 
+        obslist.meta['flux'] = obs.meta['flux']
+        obslist.meta['T'] = obs.meta['T']
         return obslist
 
     def get_obs(self, iobj, icutout, weight_type='weight'):
@@ -136,8 +138,16 @@ class MEDSInterface(meds.MEDS):
             dvdcol=jd['dvdcol'],
         )
         c=self._cat
+
+        scale=jacobian.get_scale()
+        x2=c['x2'][iobj]
+        y2=c['y2'][iobj]
+        T = (x2 + y2)
+        flux = c['flux_auto'][iobj]
         meta=dict(
             id=c['id'][iobj],
+            T=T,
+            flux=flux,
             index=iobj,
             number=c['number'][iobj],
             icut=icutout,
@@ -213,6 +223,14 @@ class MEDSifier(object):
             self.cat,
         )
 
+    def _get_image_vars(self):
+        vars=[]
+        for d in self.datalist:
+            w=np.where(d['weight'] > 0)
+            medw=np.median(d['weight'][w])
+            vars.append(1/medw)
+        return np.array(vars)
+
     def _set_detim(self):
         dlist=self.datalist
         nim=len(dlist)
@@ -220,7 +238,7 @@ class MEDSifier(object):
         detim=dlist[0]['image'].copy()
         detim *= 0
 
-        vars = np.array( [d['noise']**2 for d in dlist] )
+        vars = self._get_image_vars()
         weights = 1.0/vars
         wsum = weights.sum()
         detnoise = np.sqrt(1/wsum)
@@ -378,10 +396,34 @@ class MEDSifier(object):
         self.bmask=np.zeros(seg.shape, dtype='i4')
         self.cat=cat
 
+def fitpsf(psf_obs):
+    am=ngmix.admom.run_admom(psf_obs, 4.0)
+    gmix=am.get_gmix()
+    return gmix
+
+def get_psf_obs(psfim, jacobian):
+    cen=(np.array(psfim.shape)-1.0)/2.0
+    j=jacobian.copy()
+    j.set_cen(row=cen[0], col=cen[1])
+
+    psf_obs = ngmix.Observation(
+        psfim,
+        weight=psfim*0+1,
+        jacobian=j
+    )
+
+    gmix=fitpsf(psf_obs)
+    psf_obs.set_gmix(gmix)
+
+    return psf_obs
+
+
 def test(dim=2000):
     import galsim
     import biggles
     import images
+
+    rng=np.random.RandomState()
 
     nobj=4
     #nobj=2
@@ -416,19 +458,19 @@ def test(dim=2000):
     maxrad=dims[0]/2.0/2.0 * scale
     for i in xrange(nobj):
 
-        nknots=int(np.random.uniform(low=nknots_low, high=nknots_high))
+        nknots=int(rng.uniform(low=nknots_low, high=nknots_high))
 
-        r50=np.random.uniform(low=r50_low, high=r50_high)
-        flux = np.random.uniform(low=flux_low, high=flux_high)
+        r50=rng.uniform(low=r50_low, high=r50_high)
+        flux = rng.uniform(low=flux_low, high=flux_high)
 
-        #dx,dy=np.random.uniform(low=-3.0, high=3.0, size=2)
-        dx,dy=np.random.normal(scale=sigma, size=2).clip(min=-maxrad, max=maxrad)
+        #dx,dy=rng.uniform(low=-3.0, high=3.0, size=2)
+        dx,dy=rng.normal(scale=sigma, size=2).clip(min=-maxrad, max=maxrad)
 
-        g1d,g2d=np.random.normal(scale=0.2, size=2).clip(max=0.5)
-        g1b=0.5*g1d+np.random.normal(scale=0.02)
-        g2b=0.5*g2d+np.random.normal(scale=0.02)
+        g1d,g2d=rng.normal(scale=0.2, size=2).clip(max=0.5)
+        g1b=0.5*g1d+rng.normal(scale=0.02)
+        g2b=0.5*g2d+rng.normal(scale=0.02)
 
-        fracdev=np.random.uniform(low=fracdev_low, high=fracdev_high)
+        fracdev=rng.uniform(low=fracdev_low, high=fracdev_high)
 
         flux_bulge = fracdev*flux
         flux_disk  = (1-fracdev)*flux
@@ -471,6 +513,8 @@ def test(dim=2000):
         scale=scale,
     )
     wcs=jacob.get_galsim_wcs()
+    psfim = psf.drawImage(wcs=wcs).array
+    psf_obs=get_psf_obs(psfim, jacob)
 
     dlist=[]
     for band in xrange(nband):
@@ -485,16 +529,14 @@ def test(dim=2000):
         #    im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
         im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
 
-        im += np.random.normal(scale=noises[band], size=im.shape)
+        im += rng.normal(scale=noises[band], size=im.shape)
         wt = im*0 + 1.0/noises[band]**2
 
         dlist.append(
             dict(
                 image=im,
                 weight=wt,
-                noise=noises[band],
                 wcs=wcs,
-                pixel_scale=scale,
             )
         )
 
@@ -552,10 +594,20 @@ def test(dim=2000):
         rgb *= 1.0/rgb.max()
         imlist.append(rgb)
 
-    mof_fitter=MOFStamps(
+    for mbo in list_of_obs:
+        for obslist in mbo:
+            for obs in obslist:
+                obs.set_psf(psf_obs)
+
+    prior=mof.get_mof_prior(list_of_obs, "bdf", rng)
+    mof_fitter=mof.MOFStamps(
         list_of_obs,
         "bdf",
+        prior=prior,
     )
+    band=2
+    guess=mof.get_stamp_guesses(list_of_obs, band, "bdf", rng)
+    mof_fitter.go(guess)
     return
 
     #images.view(rgb)
