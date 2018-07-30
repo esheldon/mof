@@ -1,6 +1,7 @@
 """
 assumes the psf is constant across the input larger image
 """
+from __future__ import print_function
 import numpy as np
 import ngmix
 from ngmix.gmix import GMix, GMixModel
@@ -12,6 +13,10 @@ from ngmix.gmix import (
     get_model_ngauss,
     get_model_npars,
 )
+from ngmix.observation import Observation,ObsList,MultiBandObsList,get_mb_obs
+from ngmix.gmix import GMixList,MultiBandGMixList
+from ngmix.gexceptions import GMixRangeError
+from ngmix.priors import LOWVAL
 
 # weaker than usual
 _default_lm_pars={
@@ -120,7 +125,7 @@ class MOF(LMSimple):
 
         if band is None:
             # get all bands and epochs
-            output=ngmix.MultiBandObsList()
+            output=MultiBandObsList()
             for band in range(self.nband):
                 obslist=self.make_corrected_obs(
                     index,
@@ -133,7 +138,7 @@ class MOF(LMSimple):
             # band specified, but not the observation, so get all
             # epochs for this band
 
-            output=ngmix.ObsList()
+            output=ObsList()
 
             nepoch = len(self.obs[band])
             for obsnum in range(nepoch):
@@ -154,7 +159,7 @@ class MOF(LMSimple):
 
             if ref_obs.has_psf():
                 po=ref_obs.psf
-                psf_obs=ngmix.Observation(
+                psf_obs=Observation(
                     po.image.copy(),
                     weight=po.weight.copy(),
                     jacobian=po.jacobian.copy(),
@@ -173,7 +178,7 @@ class MOF(LMSimple):
                 row,col = gmi.get_cen()
                 jacob.set_cen(row=row, col=col)
 
-            output = ngmix.Observation(
+            output = Observation(
                 image,
                 weight=ref_obs.weight.copy(),
                 jacobian=jacob,
@@ -218,6 +223,34 @@ class MOF(LMSimple):
         return gm.make_image(obs.image.shape, jacobian=obs.jacobian)
 
 
+    def get_object_pars(self, pars_in, iobj):
+        nper=self.npars_per
+        ibeg = iobj*self.npars_per
+        iend = (iobj+1)*self.npars_per
+
+        return pars_in[ibeg:iend].copy()
+
+    def get_object_band_pars(self, pars_in, iobj, band):
+        nbper=self.nband_pars_per
+
+        pars=np.zeros(nbper)
+
+        # either i*6 or i*7
+        beg=0
+        # either 5 or 6
+        end=0+nbper-1
+
+        ibeg = iobj*self.npars_per
+        iend = ibeg+nbper-1
+
+        pars[beg:end] = pars_in[ibeg:iend]
+
+        # now copy the flux
+        pars[end] = pars_in[iend+band]
+
+        return pars
+
+
     def get_band_pars(self, pars_in, band):
         """
         Get linear pars for the specified band
@@ -225,7 +258,6 @@ class MOF(LMSimple):
 
         pars=self._band_pars
         nbper=self.nband_pars_per
-        nper=self.npars_per
 
         for i in range(self.nobj):
             # copy cen1,cen2,g1,g2,T
@@ -289,6 +321,481 @@ class MOF(LMSimple):
         components
         """
         return GMixModelMulti(band_pars, self.model)
+
+class MOFStamps(MOF):
+    def __init__(self, list_of_obs, model, **keys):
+        """
+        list_of_obs is not an ObsList, it is a python list of 
+        Observation/ObsList/MultiBandObsList
+        """
+        #super(LMSimple,self).__init__(obs, model, **keys)
+
+        self._set_all_obs(list_of_obs)
+        self._setup_nbrs()
+        self.model=model
+
+        self.model=ngmix.gmix.get_model_num(model)
+        self.model_name=ngmix.gmix.get_model_name(self.model)
+
+        self.prior = keys.get('prior',None)
+
+        assert self.prior is not None,"send a prior"
+        self.nobj=len(self.list_of_obs)
+        self._set_totpix()
+
+        if model=='bdf':
+            self.npars_per = 6+self.nband
+            self.nband_pars_per=7
+
+            # center1 + center2 + shape + T + fracdev + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+        else:
+            self.npars_per = 5+self.nband
+            self.nband_pars_per=6
+            self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+
+            # center1 + center2 + shape + T + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+
+        #self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+        self._set_fdiff_size()
+
+        self.npars = self.nobj*self.npars_per
+
+        self.lm_pars={}
+        self.lm_pars.update(_default_lm_pars)
+
+        lm_pars=keys.get('lm_pars',None)
+        if lm_pars is not None:
+            self.lm_pars.update(lm_pars)
+
+    def go(self, guess):
+        """
+        Run leastsq and set the result
+        """
+
+        guess=np.array(guess,dtype='f8',copy=False)
+
+        # assume 5+nband pars per object
+        nobj = guess.size//self.npars_per
+        nleft = guess.size % self.npars_per
+        if nobj != self.nobj or nleft != 0:
+            raise ValueError("bad guess size: %d" % guess.size)
+
+        self._setup_data(guess)
+
+        result = run_leastsq(
+            self._calc_fdiff,
+            guess,
+            self.n_prior_pars,
+            **self.lm_pars
+        )
+
+        result['model'] = self.model_name
+        if result['flags']==0:
+            stat_dict=self.get_fit_stats(result['pars'])
+            result.update(stat_dict)
+
+        self._result=result
+
+    def make_corrected_obs(self, index, band=None, obsnum=None):
+        """
+        get observation(s) for the given object and band
+        with all the neighbors subtracted from the image
+
+        parameters
+        ----------
+        index: number
+            The object index.
+        band: number, optional
+            The optional band.  If not sent, all bands and epochs are returned
+            in a MultiBandObsList
+        obsnum: number, optional
+            If band= is sent, you can also send obsnum to pick a particular
+            epoch/observation
+        """
+
+        if band is None:
+            # get all bands and epochs
+            output=MultiBandObsList()
+            for band in range(self.nband):
+                obslist=self.make_corrected_obs(
+                    index,
+                    band=band,
+                )
+                output.append(obslist)
+
+        elif obsnum is None:
+            # band specified, but not the observation, so get all
+            # epochs for this band
+
+            output=ObsList()
+
+            obslist = self.list_of_obs[index][band]
+            nepoch = len(obslist) 
+            for obsnum in range(nepoch):
+                obs = self.make_corrected_obs(
+                    index,
+                    band=band,
+                    obsnum=obsnum,
+                )
+                output.append(obs)
+
+        else:
+            # band and obsnum specified
+
+            ref_obs = self.list_of_obs[index][band][obsnum]
+
+            image =self.make_corrected_image(index, band=band, obsnum=obsnum)
+
+            po=ref_obs.psf
+            psf_obs=Observation(
+                po.image.copy(),
+                weight=po.weight.copy(),
+                jacobian=po.jacobian.copy(),
+            )
+            psf_obs.gmix =  po.gmix
+
+            jacob = ref_obs.jacobian.copy()
+
+            output = Observation(
+                image,
+                weight=ref_obs.weight.copy(),
+                jacobian=jacob,
+                psf=psf_obs,
+            )
+
+        return output
+
+ 
+    def make_corrected_image(self, index, band=0, obsnum=0):
+        """
+        get an observation for the given object and band
+        with all the neighbors subtracted from the image
+        """
+        import images
+        pars=self.get_result()['pars']
+
+        ref_obs = self.list_of_obs[index][band][obsnum]
+        psf_gmix=ref_obs.psf.gmix
+        jacob=ref_obs.jacobian
+
+        image = ref_obs.image.copy()
+        #images.view(image,title='original image',scale=True)
+
+        nbr_data=ref_obs.meta['nbr_data']
+        if len(nbr_data) > 0:
+            for nbr in nbr_data:
+                nbr_pars = self.get_object_band_pars(
+                    pars,
+                    nbr['index'],
+                    band,
+                )
+
+                # the current pars [v,u,..] are relative to
+                # fiducial position.  we need to add these to
+                # the fiducial for the rendering within
+                # the stamp of the central
+
+                nbr_pars[0] += nbr['v0']
+                nbr_pars[1] += nbr['u0']
+
+                gm0 = self._make_model(nbr_pars)
+                gm=gm0.convolve(psf_gmix)
+
+                modelim = gm.make_image(image.shape, jacobian=jacob)
+                #images.view(modelim,title='model image',scale=True)
+
+                image -= modelim
+            #images.view(image,title='correctedimage',scale=True)
+
+        #if 'q'==raw_input("band %s hit a key: " % band):
+        #    stop
+
+        return image
+
+    def _set_totpix(self):
+        """
+        Make sure the data are consistent.
+        """
+
+        totpix=0
+        for mbobs in self.list_of_obs:
+            for obs_list in mbobs:
+                for obs in obs_list:
+                    shape=obs.image.shape
+                    totpix += shape[0]*shape[1]
+
+        self.totpix=totpix
+
+    def _make_lists(self):
+        """
+        lists of references.
+        """
+        raise NotImplementedError('implement this')
+        pixels_list      = []
+        gmix_data_list   = []
+
+        for band in xrange(self.nband):
+
+            obs_list=self.obs[band]
+            gmix_list=self._gmix_all[band]
+
+            for obs,gm in zip(obs_list, gmix_list):
+
+                gmdata=gm.get_data()
+
+                pixels_list.append(obs._pixels)
+                gmix_data_list.append(gmdata)
+
+
+        self._pixels_list=pixels_list
+        self._gmix_data_list=gmix_data_list
+
+
+    def get_fit_stats(self, pars):
+        return {}
+
+    def _calc_fdiff(self, pars):
+        """
+        vector with (model-data)/error.
+
+        The npars elements contain -ln(prior)
+        """
+
+        # we cannot keep sending existing array into leastsq, don't know why
+        fdiff=np.zeros(self.fdiff_size)
+        start = 0
+
+        try:
+
+            for iobj,mbo in enumerate(self.list_of_obs):
+                # fill priors and get new start
+                objpars=self.get_object_pars(pars, iobj)
+                start = self._fill_priors(objpars, fdiff, start)
+
+                for band,obslist in enumerate(mbo):
+                    for obs in obslist:
+
+                        meta=obs.meta
+                        pixels=obs.pixels
+
+                        gm0=meta['gmix0']
+                        gm=meta['gmix']
+                        psf_gmix=obs.psf.gmix
+
+                        tpars = self.get_object_band_pars(
+                            pars,
+                            iobj,
+                            band,
+                        )
+
+
+                        self._update_model(tpars,
+                                           gm0, gm, psf_gmix,
+                                           pixels, fdiff, start)
+
+                        # now also do same for neighbors. We can re-use
+                        # the gmixes
+                        for nbr in meta['nbr_data']:
+                            tnbr_pars = self.get_object_band_pars(
+                                pars,
+                                nbr['index'],
+                                band,
+                            )
+                            # the current pars [v,u,..] are relative to
+                            # fiducial position.  we need to add these to
+                            # the fiducial for the rendering within
+                            # the stamp of the central
+                            tnbr_pars[0] += nbr['v0']
+                            tnbr_pars[1] += nbr['u0']
+                            self._update_model(tnbr_pars,
+                                               gm0, gm, psf_gmix,
+                                               pixels, fdiff, start)
+
+                        # convert model values to fdiff
+                        ngmix.fitting_nb.finish_fdiff(
+                            obs._pixels,
+                            fdiff,
+                            start,
+                        )
+
+                        start += pixels.size
+
+
+        except GMixRangeError as err:
+            fdiff[:] = LOWVAL
+
+        return fdiff
+
+    def _fill_priors(self, pars, fdiff, start):
+        """
+        same prior for every object
+        """
+
+        nprior=self.prior.fill_fdiff(pars, fdiff[start:])
+
+        return start+nprior
+
+
+    def _update_model(self, pars, gm0, gm, psf_gmix, pixels, model_array, start):
+        gm0._fill(pars)
+        ngmix.gmix_nb.gmix_convolve_fill(
+            gm._data,
+            gm0._data,
+            psf_gmix._data,
+        )
+
+        ngmix.fitting_nb.update_model_array(
+            gm._data,
+            pixels,
+            model_array,
+            start,
+        )
+
+
+
+    def _init_gmix_all(self, pars):
+        """
+        input pars are in linear space
+
+        initialize the list of lists of gaussian mixtures
+        """
+
+        for iobj,mbobs in enumerate(self.list_of_obs):
+            for band,obs_list in enumerate(mbobs):
+                band_pars=self.get_object_band_pars(pars, iobj, band)
+                for obs in obs_list:
+                    assert obs.has_psf_gmix(),"psfs must be set"
+
+                    # make this make a single model not huge model
+                    gm0 = self._make_model(band_pars)
+                    psf_gmix=obs.psf.gmix
+                    gm=gm0.convolve(psf_gmix)
+
+                    obs.meta['gmix0'] = gm0
+                    obs.meta['gmix'] = gm
+
+    def _init_gmix_all_old(self, pars):
+        """
+        input pars are in linear space
+
+        initialize the list of lists of gaussian mixtures
+        """
+
+
+        gmix0_lol=[]
+        gmix_lol=[]
+        for iobj,mbobs in enumerate(self.list_of_obs):
+
+            gmix_all0 = MultiBandGMixList()
+            gmix_all  = MultiBandGMixList()
+
+            for band,obs_list in enumerate(mbobs):
+                gmix_list0=GMixList()
+                gmix_list=GMixList()
+
+                band_pars=self.get_object_band_pars(pars, iobj, band)
+
+                for obs in obs_list:
+                    assert obs.has_psf_gmix(),"psfs must be set"
+
+                    # make this make a single model not huge model
+                    gm0 = self._make_model(band_pars)
+                    psf_gmix=obs.psf.gmix
+                    gm=gm0.convolve(psf_gmix)
+
+                    gmix_list0.append(gm0)
+                    gmix_list.append(gm)
+
+                gmix_all0.append(gmix_list0)
+                gmix_all.append(gmix_list)
+
+            gmix0_lol.append( gmix_all0 )
+            gmix_lol.append( gmix_all )
+
+        self.gmix0_lol=gmix0_lol
+        self.gmix_lol=gmix_lol
+
+
+    def _make_model(self, band_pars):
+        """
+        generate a gaussian mixture
+        """
+        return GMixModel(band_pars, self.model)
+
+    def _set_all_obs(self, list_of_obs):
+
+        lobs=[]
+        for i,o in enumerate(list_of_obs):
+            mbo=get_mb_obs(o)
+            if i==0:
+                self.nband=len(mbo)
+            else:
+                assert len(mbo)==self.nband,"all obs must have same number of bands"
+            lobs.append(mbo)
+
+        self.list_of_obs = lobs
+
+    def _setup_nbrs(self):
+        """
+        determine which neighboring objects should be
+        rendered into each stamp
+        """
+        for iobj,mbo in enumerate(self.list_of_obs):
+            for band in xrange(self.nband):
+                band_obslist=mbo[band]
+
+                for icut,obs in enumerate(band_obslist):
+                    nbr_data = self._get_nbr_data(obs, iobj, band)
+                    obs.meta['nbr_data']=nbr_data
+                    print('    obj %d band %d cut %d found %d '
+                          'nbrs' % (iobj,band,icut,len(nbr_data)))
+
+    def _get_nbr_data(self, obs, iobj, band):
+        """
+        TODO trim list to those that we expect to contribute flux
+        """
+
+        jacobian=obs.jacobian
+        meta=obs.meta
+
+        nbr_list=[]
+        # now look for neighbors that were found in
+        # this image
+        file_id=obs.meta['file_id']
+        for inbr,nbr_mbo in enumerate(self.list_of_obs):
+            if inbr==iobj:
+                continue
+
+            nbr_band_obslist=nbr_mbo[band]
+            for nbr_obs in nbr_band_obslist:
+                # only keep the ones in the same image
+                # will want to trim later to ones expected to contribute
+                # flux
+                nbr_meta=nbr_obs.meta
+                if nbr_meta['file_id']==file_id:
+                    # row,col within the postage stamp of the central object
+                    row = nbr_meta['orig_row'] - meta['orig_start_row']
+                    col = nbr_meta['orig_col'] - meta['orig_start_col']
+                    
+                    # this makes a copy
+                    #jacobian=obs.jacobian
+                    #jacobian.set_cen(row=row, col=col)
+
+                    # note pars are [v,u,g1,g2,...]
+                    v,u=jacobian(row,col)
+                    nbr_data=dict(
+                        #row=row,
+                        #col=col,
+                        v0=v,
+                        u0=u,
+                        index=inbr,
+                        #jacobian=jacobian,
+                    )
+                    nbr_list.append(nbr_data)
+
+        return nbr_list
 
 
 # TODO move to ngmix
@@ -436,5 +943,102 @@ class GMixModelMulti(GMix):
 
         return image
     '''
+
+def get_stamp_guesses(list_of_obs, detband, model, rng):
+    """
+    get a guess based on metadata in the obs
+
+    T guess is gotten from detband
+    """
+
+    assert model=="bdf"
+    nband=len(list_of_obs[0])
+
+    npars_per=6+nband
+    nobj=len(list_of_obs)
+
+    npars_tot = nobj*npars_per
+    guess = np.zeros(npars_tot)
+
+    for i,mbo in enumerate(list_of_obs):
+        detobslist = mbo[detband]
+        detmeta=detobslist.meta
+
+        obs=detobslist[0]
+
+        scale=obs.jacobian.get_scale()
+        pos_range = scale*0.1
+
+        T=detmeta['T']*scale**2
+
+        beg=i*npars_per
+
+        # always close guess for center
+        guess[beg+0] = rng.uniform(low=-pos_range, high=pos_range)
+        guess[beg+1] = rng.uniform(low=-pos_range, high=pos_range)
+
+        # always arbitrary guess for shape
+        guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
+        guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
+
+        guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+        # arbitrary guess for fracdev
+        guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+
+        for band in xrange(nband):
+            obslist=mbo[band]
+            meta=obslist.meta
+
+            # note we take out scale**2 in DES images when
+            # loading from MEDS so this isn't needed
+            flux=meta['flux']*scale**2
+            flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+            guess[beg+6+band] = flux_guess
+
+    return guess
+
+def get_mof_prior(list_of_obs, model, rng):
+    """
+    Not generic, need to let this be configurable
+    """
+    assert model=="bdf"
+
+    nobj=len(list_of_obs)
+    nband=len(list_of_obs[0])
+
+    obs=list_of_obs[0][0][0] 
+    cen_sigma=obs.jacobian.get_scale() # a pixel
+    cen_prior=ngmix.priors.CenPrior(
+        0.0,
+        0.0,
+        cen_sigma, cen_sigma,
+        rng=rng,
+    )
+
+    g_prior=ngmix.priors.GPriorBA(
+        0.2,
+        rng=rng,
+    )
+    T_prior = ngmix.priors.TwoSidedErf(
+        -1.0, 0.1, 1.0e6, 1.0e5,
+        rng=rng,
+    )
+
+    fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
+
+    F_prior = ngmix.priors.TwoSidedErf(
+        -100.0, 1.0, 1.0e9, 1.0e8,
+        rng=rng,
+    )
+
+    return ngmix.joint_prior.PriorBDFSep(
+        cen_prior,
+        g_prior,
+        T_prior,
+        fracdev_prior,
+        [F_prior]*nband,
+    )
 
 

@@ -11,3 +11,4 @@ from . import minitest
 # test of big version
 from . import moftest
 
+from . import stamps

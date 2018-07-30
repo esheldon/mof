@@ -1,0 +1,45 @@
+dims: [100, 100]
+nobj: 16
+#models: ['gauss','exp','dev']
+models: ['bulge+disk']
+#models: ['exp']
+
+noise_sigma: 0.01
+#noise_sigma: 0.001
+psf_dims: [25,25]
+psf_noise_sigma: 0.0001
+
+pdfs:
+    g:
+        sigma: 0.2
+    T:
+        type: lognormal
+        mean: 10.0
+        #sigma: 2.0
+        sigma: 8.0
+        #limits: [0.1, 40.0]
+#    F:
+#        type: lognormal
+#        mean: 2.0
+#        sigma: 1.0
+#        limits: [0.1, 20.0]
+
+
+#    T:
+#        type: lognormal
+#        mean: 4.0
+#        sigma: 10.0
+#        range: [1.0, 20.0]
+#    F:
+#        type: lognormal
+#        mean: 2.0
+#        sigma: 2.0
+#        limits: [0.1, 20.0]
+
+    F:
+        type: trackT
+        factor: 0.2
+
+shear: [0.0, 0.05]
+
+fit_model: bdf
