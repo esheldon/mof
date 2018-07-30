@@ -169,13 +169,16 @@ class MOF(LMSimple):
             else:
                 psf_obs=None
 
-            jacob = ref_obs.jacobian.copy()
+            # this makes a copy
+            jacob = ref_obs.jacobian
             if recenter:
 
                 gm = self.get_gmix(band=band)
                 gmi = gm.get_one(index)
 
-                row,col = gmi.get_cen()
+                # this is v,u
+                v,u = gmi.get_cen()
+                row, col = jacob.get_rowcol(v, u)
                 jacob.set_cen(row=row, col=col)
 
             output = Observation(
