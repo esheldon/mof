@@ -28,12 +28,10 @@ class Sim(dict):
         self.g_pdf = self._make_g_pdf()
         self.hlr_pdf = self._make_hlr_pdf()
         self.F_pdf = self._make_F_pdf()
-        if 'bulge+disk' in self['models']:
-            self.bulge_hlr_frac_pdf=self._make_bulge_hlr_frac_pdf()
-            self.fracdev_pdf=self._make_fracdev_pdf()
+        self._make_bulge_pdfs()
 
         if 'knots' in self['pdfs']:
-            self.knots_frac_pdf=self._make_knots_frac_pdf()
+            self._make_knots_pdfs()
 
         #cen=(self['dims']-1.0)/2.0
         #maxrad=cen[0]-self['dims'][0]/10.0
@@ -56,6 +54,43 @@ class Sim(dict):
             rng=self.rng,
         )
 
+    def make_obs(self):
+        self._set_bands()
+        self._set_psf()
+        self._set_objects()
+        self._draw_objects()
+        self._add_noise()
+        self._make_obs()
+
+    def get_obs(self):
+        return self.obs
+
+    def get_psf_obs(self):
+        return self.psf_obs
+
+    def get_multiband_meds(self):
+        medser=self.get_medsifier()
+        mm=medser.get_multiband_meds()
+        return mm
+
+    def get_medsifier(self):
+        from .stamps import MEDSifier
+        dlist=[]
+        for olist in self.obs:
+            # assuming only one image per band
+            tobs=olist[0]
+            wcs=tobs.jacobian.get_galsim_wcs()
+
+            dlist.append(
+                dict(
+                    image=tobs.image,
+                    weight=tobs.weight,
+                    wcs=wcs,
+                )
+            )
+
+        return MEDSifier(dlist)
+
     def _make_g_pdf(self):
         c=self['pdfs']['g']
         rng=self.rng
@@ -72,25 +107,59 @@ class Sim(dict):
         else:
             return self._get_generic_pdf(c)
 
+    def _make_bulge_pdfs(self):
+        self.bulge_hlr_frac_pdf=self._make_bulge_hlr_frac_pdf()
+        self.fracdev_pdf=self._make_fracdev_pdf()
+
     def _make_bulge_hlr_frac_pdf(self):
-        c=self['pdfs']['bulge_hlr']
-        assert c['fac']['type'] == 'uniform'
-        frng=c['fac']['range']
+        c=self['pdfs']['bulge']['hlr_fac']
+        assert c['type'] == 'uniform'
+
+        frng=c['range']
         return ngmix.priors.FlatPrior(frng[0], frng[1], rng=self.rng)
 
     def _make_fracdev_pdf(self):
-        c=self['pdfs']['fracdev']
+        c=self['pdfs']['bulge']['fracdev']
         assert c['type'] == 'uniform'
         frng=c['range']
         return ngmix.priors.FlatPrior(frng[0], frng[1], rng=self.rng)
 
+    def _get_bulge_stats(self):
+        c=self['pdfs']['bulge']
+        shift_width = c['bulge_shift']
 
-    def _make_knots_frac_pdf(self):
+        radial_offset = self.rng.uniform(
+            low=0.0,
+            high=shift_width,
+        )
+        theta = self.rng.uniform(low=0, high=np.pi*2)
+        offset = (
+            radial_offset*np.sin(theta),
+            radial_offset*np.cos(theta),
+        )
+
+        hlr_fac = self.bulge_hlr_frac_pdf.sample()
+        fracdev = self.fracdev_pdf.sample()
+        grng=c['g']['fac']['rng']
+        gfac = self.rng.uniform(
+            low=grng[0],
+            high=grng[1],
+        )
+
+        return hlr_fac, fracdev, gfac, offset
+
+
+    def _get_knots_stats(self, disk_flux):
         c=self['pdfs']['knots']
-        assert c['frac']['type'] == 'uniform'
-        frng=c['frac']['range']
-        return ngmix.priors.FlatPrior(frng[0], frng[1], rng=self.rng)
+        nrange = c['num']['range']
+        num = self.rng.randint(nrange[0], nrange[1]+1)
 
+        flux = num*c['flux_frac_per_knot']*disk_flux
+        return num, flux
+
+    def _make_knots_pdfs(self):
+        c=self['pdfs']['knots']['num']
+        assert c['type']=='uniform'
 
     def _get_generic_pdf(self, c):
         rng=self.rng
@@ -116,21 +185,23 @@ class Sim(dict):
         else:
             return ngmix.priors.LimitPDF(pdf, [0.0, 30.0])
 
-    def make_obs(self):
-        self._set_psf()
-        self._set_objects()
-        self._draw_objects()
-        self._add_noise()
-        self._make_obs()
-
-    def get_obs(self):
-        return self.obs
-
-    def get_image(self):
-        return self.image
-
     def show(self):
         images.multiview(self.image)
+
+    def _set_bands(self):
+        nband=self.get('nband',None)
+
+        cdisk=self['pdfs']['disk']
+        cbulge=self['pdfs']['bulge']
+        cknots=self['pdfs'].get('knots',None)
+
+        if nband is None:
+            self['nband']=1
+            cdisk['color']=[1.0]
+            cbulge['color']=[1.0]
+            if cknots is not None:
+                cknots['color']=[1.0]
+
 
     def _fit_psf_admom(self, obs):
         Tguess=4.0*self['pixel_scale']**2
@@ -173,96 +244,61 @@ class Sim(dict):
         psf_gmix=self._fit_psf_admom(self.psf_obs)
         self.psf_obs.set_gmix(psf_gmix)
 
-    def _get_bulgedisk_object(self):
-        disk_g1,disk_g2 = self.g_pdf.sample2d()
-        bulge_g1,bulge_g2 = self.g_pdf.sample2d()
+    def _get_object(self):
 
         disk_hlr = self.hlr_pdf.sample()
-        bulge_shift_width = disk_hlr*self['pdfs']['bulge_shift']
-
-        bulge_dx, bulge_dy = self.rng.uniform(
-            low=-bulge_shift_width,
-            high=bulge_shift_width,
-            size=2,
-        )
-
-
-        bulge_hlr = disk_hlr*self.bulge_hlr_frac_pdf.sample()
-
         if self.F_pdf=='track_hlr':
             flux = disk_hlr**2 *self['pdfs']['F']['factor']
         else:
             flux = self.F_pdf.sample()
+        disk_g1,disk_g2 = self.g_pdf.sample2d()
 
-        fracdev = self.fracdev_pdf.sample()
+        hlr_fac, fracdev, gfac, bulge_offset = self._get_bulge_stats()
 
-        total_disk_flux = (1-fracdev)*flux
+        bulge_hlr = disk_hlr*hlr_fac
+        bulge_g1,bulge_g2 = gfac*disk_g1, gfac*disk_g2
+
+        disk_flux = (1-fracdev)*flux
         bulge_flux = fracdev*flux
 
-        if hasattr(self,'knots_frac_pdf'):
-            knots_frac = self.knots_frac_pdf.sample()
-            smooth_frac = 1 - knots_frac
-
-            smooth_flux = smooth_frac*total_disk_flux
-            knots_flux = knots_frac*total_disk_flux
-
-            smooth_disk = galsim.Exponential(
-                half_light_radius=disk_hlr,
-                flux=smooth_flux,
-            )
-
-            #knots = galsim.RandomWalk(
-            #    npoints=self['pdfs']['knots']['num'],
-            #    profile=smooth_disk.withFlux(knots_flux),
-            #)
-            knots = galsim.RandomWalk(
-                npoints=self['pdfs']['knots']['num'],
-                half_light_radius=disk_hlr,
-                flux=knots_flux,
-            )
-
-            disk = galsim.Add(smooth_disk, knots)
-        else:
-            disk = galsim.Exponential(
-                half_light_radius=disk_hlr,
-                flux=total_disk_flux,
-            )
-
-        disk = disk.shear(g1=disk_g1, g2=disk_g2)
+        disk = galsim.Exponential(
+            half_light_radius=disk_hlr,
+            flux=disk_flux,
+        ).shear(
+            g1=disk_g1, g2=disk_g2,
+        )
 
         bulge=galsim.DeVaucouleurs(
             half_light_radius=bulge_hlr,
             flux=bulge_flux,
-        ).shift(dx=bulge_dx, dy=bulge_dy)
+        ).shear(
+            g1=bulge_g1, g2=bulge_g2,
+        ).shift(
+            dx=bulge_offset[1], dy=bulge_offset[0],
+        )
 
-        return galsim.Sum(bulge, disk)
+        all_obj={
+            'disk':disk,
+            'bulge':bulge,
+        }
+ 
+        if 'knots' in self['pdfs']:
+            nknots, knots_flux = self._get_knots_stats(disk_flux)
 
 
-    def _get_object(self):
-        """
-        draw a random model
-        """
+            knots = galsim.RandomWalk(
+                npoints=nknots,
+                half_light_radius=disk_hlr,
+                flux=knots_flux,
+            ).shear(g1=disk_g1, g2=disk_g2)
 
-        i=self.rng.randint(0, len(self['models']))
-        modname=self['models'][i]
+            all_obj['knots'] = knots
 
         obj_cen1, obj_cen2 = self.position_pdf.sample()
-
-        if modname=='bulge+disk':
-            obj = self._get_bulgedisk_object()
-        else:
-            obj = self._get_simple_object()
-
-        obj = obj.shift(
-            dx=obj_cen2,
-            dy=obj_cen1,
-        )
-        return obj
+        all_obj['cen'] = (obj_cen1, obj_cen2)
+        return all_obj
 
     def _set_objects(self):
-        rng=self.rng
-        obj_pars = []
-
         self.objlist=[]
         for i in range(self['nobj']):
 
@@ -275,51 +311,81 @@ class Sim(dict):
         we don't need to
         """
 
-        objects = galsim.Sum(self.objlist)
+        self.imlist=[]
 
-        shear=self.get('shear',None)
-        if shear is not None:
-            objects = objects.shear(
-                g1=shear[0],
-                g2=shear[1],
-            )
+        cdisk=self['pdfs']['disk']
+        cbulge=self['pdfs']['bulge']
+        cknots=self['pdfs'].get('knots',None)
 
-        convolved_objects = galsim.Convolve(objects, self.psf)
+        for band in xrange(self['nband']):
+            objects=[]
+            for obj_parts in self.objlist:
 
-        kw={'scale':self['pixel_scale']}
+                disk=obj_parts['disk']*cdisk['color'][band]
+                bulge=obj_parts['bulge']*cbulge['color'][band]
+                tparts=[disk, bulge]
 
-        dims = self.get('dims',None)
-        if dims is not None:
-            kw['nx'],kw['ny'] = dims[1],dims[0]
+                if cknots is not None:
+                    knots = obj_parts['knots']*cknots['color'][band]
+                    tparts.append( knots )
 
-        dims = np.array(self.psf_im.shape)
-        self.image0 = convolved_objects.drawImage(**kw).array
+                obj = galsim.Sum(tparts)
+                obj = obj.shift(
+                    dx=obj_parts['cen'][0],
+                    dy=obj_parts['cen'][1],
+                )
+                objects.append(obj)
 
-        #import images
-        #images.multiview(self.image0)
-        #stop
+            objects = galsim.Sum(objects)
+
+            shear=self.get('shear',None)
+            if shear is not None:
+                objects = objects.shear(
+                    g1=shear[0],
+                    g2=shear[1],
+                )
+
+            convolved_objects = galsim.Convolve(objects, self.psf)
+
+            kw={'scale':self['pixel_scale']}
+
+            dims = self.get('dims',None)
+            if dims is not None:
+                kw['nx'],kw['ny'] = dims[1],dims[0]
+
+            dims = np.array(self.psf_im.shape)
+            image =  convolved_objects.drawImage(**kw).array
+            self.imlist.append(image)
+
 
     def _add_noise(self):
-        noise_image = self.rng.normal(
-            scale=self['noise_sigma'],
-            size=self.image0.shape,
-        )
-        self.image = self.image0 + noise_image
+        for im in self.imlist:
+            noise_image = self.rng.normal(
+                scale=self['noise_sigma'],
+                size=im.shape,
+            )
+            im += noise_image
 
     def _make_obs(self):
 
-        self.jacobian = ngmix.DiagonalJacobian(
-            row=0,
-            col=0,
-            scale=self['pixel_scale']
-        )
+        mbobs=ngmix.MultiBandObsList()
 
-        wt=np.zeros(self.image.shape) + 1.0/self['noise_sigma']**2
-        self.obs = ngmix.Observation(
-            self.image,
-            weight=wt,
-            jacobian=self.jacobian,
-            psf=self.psf_obs,
-        )
+        for im in self.imlist:
+            jacobian = ngmix.DiagonalJacobian(
+                row=0,
+                col=0,
+                scale=self['pixel_scale']
+            )
 
+            wt=np.zeros(im.shape) + 1.0/self['noise_sigma']**2
+            obs = ngmix.Observation(
+                im,
+                weight=wt,
+                jacobian=jacobian,
+                psf=self.psf_obs,
+            )
+            olist=ngmix.ObsList()
+            olist.append(obs)
+            mbobs.append(olist)
 
+        self.obs=mbobs

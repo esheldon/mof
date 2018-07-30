@@ -5,6 +5,7 @@ import time
 import yaml
 import numpy as np
 import minimof
+from minimof import mof
 import ngmix
 import sep
 import fitsio
@@ -28,7 +29,7 @@ parser.add_argument('--stamps',
 
 parser.add_argument('--save',
                     action='store_true',
-                    help='save plots')
+                    help='save plots and outputs')
 
 parser.add_argument('--show',
                     action='store_true',
@@ -58,98 +59,93 @@ parser.add_argument('--trueprior',
                     action='store_true',
                     help='use true priors')
 
-def get_mof_prior(objects, jacobian, rng):
+def make_full_images(dims, fitter, list_of_obs, pars):
     """
-    Note a single jacobian is being sent.  for multi-band this
-    is the same as assuming they are all on the same coordinate system.
+    pars here have stamp coordinates
+    """
+    impars=pars.copy()
+    nobj=len(list_of_obs)
+
+    nband=len(list_of_obs[0])
+    npars_per = 6+nband
     
-    assuming all images have the 
-    prior for N objects.  The priors are the same for
-    structural parameters, the only difference being the
-    centers
+    imlist=[]
+    jlist=[]
+    for band in xrange(nband):
+        imlist.append( np.zeros(dims) )
+        j=list_of_obs[0][band][0].jacobian
+        j.set_cen(row=0, col=0)
+        jlist.append(j)
+
+    for iobj in xrange(nobj):
+
+        for band,im in enumerate(imlist):
+            j=jlist[band]
+
+            # assuming single epoch
+            obs=list_of_obs[iobj][band][0]
+            meta=obs.meta
+
+            gm = fitter.get_convolved_gmix(
+                iobj,
+                band=band,
+            )
+
+            # center relative to the fiducial center in
+            # this postage stamp
+            v, u = gm.get_cen()
+
+            # original location, but now in bug image coords
+            v0,u0 = j(meta['orig_row'], meta['orig_col'])
+
+            v += v0
+            u += u0
+
+            gm.set_cen(v, u)
+
+            gm._fill_image(im, jacobian=j)
+
+    return imlist
+
+
+def make_rgb(gim, rim, iim):
+    import images
+    rgb=images.get_color_image(
+        #imi*fac,imr*fac,img*fac,
+        iim.transpose(),
+        rim.transpose(),
+        gim.transpose(),
+        nonlinear=0.1,
+    )
+
+    print("rgb shape:",rgb.shape)
+    return rgb
+
+def make_combined3(im, model_im):
     """
+    rgb and diff
+    """
+    nrow, ncol = im.shape
+    comb=np.zeros( (nrow, ncol*3) )
 
-    nobj=len(objects)
+    diff=model_im-im
+    comb[:, 0:ncol] = im
+    comb[:, ncol:2*ncol] = model_im
+    comb[:, 2*ncol:] = diff
+    return comb
 
-    cen_priors=[]
+def make_combined2(im, model_im):
+    """
+    rgb and diff
+    """
+    nrow, ncol = im.shape
+    comb=np.zeros( (nrow, ncol*2) )
 
-    cen_sigma=jacobian.get_scale() # a pixel
-    for i in xrange(nobj):
-        row=objects['y'][i]#-1
-        col=objects['x'][i]#-1
+    diff=model_im-im
+    comb[:, 0:ncol] = im
+    comb[:, ncol:] = diff
+    return comb
 
-        v, u = jacobian(row, col)
-        p=ngmix.priors.CenPrior(
-            v,
-            u,
-            cen_sigma, cen_sigma,
-            rng=rng,
-        )
-        cen_priors.append(p)
-
-    g_prior=ngmix.priors.GPriorBA(
-        0.2,
-        rng=rng,
-    )
-    T_prior = ngmix.priors.TwoSidedErf(
-        -1.0, 0.1, 1.0e6, 1.0e5,
-        rng=rng,
-    )
-
-    fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
-    #fracdev_prior = ngmix.priors.Normal(0.0, 100, rng=rng)
-
-    F_prior = ngmix.priors.TwoSidedErf(
-        -100.0, 1.0, 1.0e9, 1.0e8,
-        rng=rng,
-    )
-
-    return minimof.priors.PriorBDFSepMulti(
-        cen_priors,
-        g_prior,
-        T_prior,
-        fracdev_prior,
-        F_prior,
-    )
-
-def get_guess(objects, jacobian, rng):
-
-    scale=jacobian.get_scale()
-    pos_range = scale*0.1
-
-    npars_per=7
-    nobj=len(objects)
-
-    npars_tot = nobj*npars_per
-    guess = np.zeros(npars_tot)
-
-    for i in xrange(nobj):
-        row=objects['y'][i]#-1
-        col=objects['x'][i]#-1
-
-        v, u = jacobian(row, col)
-
-        T=scale**2 * (objects['x2'][i] + objects['y2'][i])
-        flux=scale**2 * objects['flux'][i]
-
-        beg=i*npars_per
-
-        # always close guess for center
-        guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
-        guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
-
-        # always arbitrary guess for shape
-        guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
-        guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
-
-        guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
-
-        # arbitrary guess for fracdev
-        guess[beg+5] = rng.uniform(low=0.4,high=0.6)
-
-        guess[beg+6] = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
-
-    return guess
 
 
 def print_pars(nobj, npars_per, pars, front="    "):
@@ -166,19 +162,24 @@ def main():
     with open(args.config_file) as fobj:
         config=yaml.load(fobj)
 
+    nband=config['nband']
+
     filebase=os.path.basename(args.config_file).replace('.yaml','')
     filebase='%s-%d' % (filebase,args.seed)
     fitsfile=filebase+'.fits'
     print("opening fits file:",fitsfile)
     fits=fitsio.FITS(fitsfile,mode='rw',clobber=True)
     dt=[
-        ('guess','f8',7),
-        ('pars','f8',7),
+        ('guess','f8',6+nband),
+        ('pars','f8',6+nband),
     ]
 
     results=[]
 
+    detband=2
+
     sim=minimof.moftest.Sim(config, args.seed)
+    fitrng = np.random.RandomState(sim.rng.randint(0,2**15))
 
     tm_sim=0.0
     tm_fit=0.0
@@ -194,17 +195,14 @@ def main():
         sim.make_obs()
         this_tm_sim = time.time()-this_tm_sim
 
+        # this runs sextractor
         this_tm_extract = time.time()
-        objects, segmap = sep.extract(
-            sim.image,
-            1.5,
-            #.5,
-            err=sim['noise_sigma'],
-            #minarea=2,
-            deblend_cont=0.0001,
-            segmentation_map=True,
-        )
+        medser = sim.get_medsifier()
         this_tm_extract = time.time() - this_tm_extract 
+
+        segmap=medser.seg
+        m2=medser.get_meds(detband)
+        objects=m2.get_cat()
 
         print("found",len(objects),"objects")
         nobj=len(objects)
@@ -216,26 +214,20 @@ def main():
 
         this_tm_fit = time.time()
 
-        prior = get_mof_prior(
-            objects,
-            sim.obs.jacobian,
-            sim.rng,
-        )
-
         if args.stamps:
-            wcs=sim.obs.jacobian.get_galsim_wcs()
-            dlist=[
-                dict(
-                    image=sim.obs.image,
-                    weight=sim.obs.weight,
-                    wcs=wcs,
-                )
-            ]
-            mi=minimof.stamps.MEDSifier(dlist)
-            m=m.get_meds(0)
-            list_of_obs=[m.get_obslist(i) for i in xrange(m.size)]
+            m=medser.get_multiband_meds()
+            list_of_obs=[]
+            for i in xrange(objects.size):
+                mbo = m.get_mbobs(i)
 
-            fitter=minimof.MOFStamps(
+                for olist in mbo:
+                    for o in olist:
+                        o.set_psf(sim.psf_obs)
+
+                list_of_obs.append(mbo)
+
+            prior=mof.get_mof_stamps_prior(list_of_obs, config['fit_model'], fitrng)
+            fitter=minimof.mof.MOFStamps(
                 list_of_obs,
                 config['fit_model'],
                 prior=prior,
@@ -243,6 +235,14 @@ def main():
 
 
         else:
+            prior = mof.get_mof_full_image_prior(
+                objects,
+                nband,
+                sim.obs[0][0].jacobian,
+                config['fit_model'],
+                fitrng,
+            )
+
             fitter=minimof.MOF(
                 sim.obs,
                 config['fit_model'],
@@ -251,7 +251,15 @@ def main():
             )
 
         for itry in range(ntry):
-            guess = get_guess(objects, sim.obs.jacobian, sim.rng)
+            if args.stamps:
+                guess = mof.get_stamp_guesses(
+                    list_of_obs, detband, config['fit_model'], fitrng,
+                )
+            else:
+                guess = mof.get_full_image_guesses(
+                    objects, nband, sim.obs[0][0].jacobian,
+                    config['fit_model'], fitrng,
+                )
             fitter.go(guess)
             res=fitter.get_result()
             if res['flags']==0:
@@ -265,112 +273,146 @@ def main():
 
         print("this time fit:",this_tm_fit)
 
+        if args.show:
+            rgb=make_rgb(
+                sim.imlist[2],
+                sim.imlist[1],
+                sim.imlist[0],
+            )
+
+
         if res['flags'] != 0:
             print("failed")
             nfail += 1
 
             if args.show:
                 import images
-                images.view(sim.obs.image)
-                if input('hit a key (q to quit): ')=='q':
+                images.view(rgb/rgb.max())
+                if i < (args.ntrial-1) and input('hit a key (q to quit): ')=='q':
                     return
         else:
 
             npars_per=guess.size//nobj
+            if args.save:
 
-            output=np.zeros(nobj, dtype=dt)
-            output['guess'] = guess.reshape(nobj, npars_per)
-            output['pars'] = res['pars'].reshape(nobj, npars_per)
-            fits.write(output)
+                output=np.zeros(nobj, dtype=dt)
+                output['guess'] = guess.reshape(nobj, npars_per)
+                output['pars'] = res['pars'].reshape(nobj, npars_per)
+                fits.write(output)
 
-            print("nfev:",res['nfev'])
-            print_pars(nobj, npars_per, guess, front="guess: ")
-            print_pars(nobj, npars_per, res['pars'], front="best_fit: ")
+            if args.show or args.save:
+                print("nfev:",res['nfev'])
+                print_pars(nobj, npars_per, guess, front="guess: ")
+                print_pars(nobj, npars_per, res['pars'], front="best_fit: ")
 
-            model_image = fitter.make_image(0, 0)
-
-            diff=model_image - sim.get_image()
-
-            chi2 =  ( (diff**2).sum() / sim['noise_sigma']**2 )
-            npars_tot=nobj*6
-            dof = model_image.size - npars_tot
-            chi2per = chi2/dof
-            print("chi2per:",chi2per)
-
-            if args.show or args.save or args.show_corrected:
-                import images
-                import biggles
-                plt = biggles.Table(
-                    2, 2,
-                    aspect_ratio=0.9,
-                    title=r'$\chi^2/dof: %.2f$' % chi2per,
-                )
-                plt[0,0] = images.view(sim.get_image(),
-                                       title='image',
-                                       scale=True,
-                                       show=False)
-                plt[0,1] = images.view(model_image,
-                                       title='model',
-                                       scale=True,
-                                       show=False)
-                plt[1,0] = images.view(sim.get_image()-model_image,
-                                       title='image-model',
-                                       scale=True,
-                                       show=False)
-
-                if segmap is not None:
-                    plt[1,1] = images.view(segmap, show=False, title='segmap')
-                else:
-                    plt[1,1] = images.view(sim.image0, show=False, title='truth')
-
-                if args.show:
-                    plt.show(
-                        width=args.size,
-                        height=args.size,
-                    )
-
-                if args.save:
-                    pngname='%s-diff-%06d.png' % (filebase,i)
-                    print("writing:",pngname)
-                    plt.write_img(args.size, args.size, pngname)
-
-
-                nobj=fitter.get_nobj()
-                if nobj > 1 and args.show_corrected:
-                    import esutil as eu
-                    grid=eu.plotting.Grid(nobj)
-                    tab=biggles.Table(grid.nrow, grid.ncol)
-                    arat=float(grid.nrow)/grid.ncol
-                    tab.aspect_ratio=arat
-                    for ishow in range(nobj):
-                        row,col=grid.get_rowcol(ishow)
-
-                        tobs=fitter.make_corrected_obs(ishow,band=0,obsnum=0)
-                        tab[row,col]=images.view(
-                            tobs.image,
-                            show=False,
-                            title='%d' % ishow,
+                if args.stamps:
+                    # load a regular MOF fitter and use it to get the
+                    # full image
+                    model_image0, model_image1, model_image2=\
+                        full_image_pars=make_full_images(
+                            sim.imlist[2].shape,
+                            fitter,
+                            list_of_obs,
+                            res['pars'],
                         )
+                else:
+                    model_image0 = fitter.make_image(0)
+                    model_image1 = fitter.make_image(1)
+                    model_image2 = fitter.make_image(2)
+
+                model_rgb = make_rgb(
+                    model_image0,
+                    model_image1,
+                    model_image2,
+                )
+
+                comb0 = make_combined3(sim.imlist[0], model_image0)
+                comb1 = make_combined3(sim.imlist[1], model_image1)
+                comb2 = make_combined3(sim.imlist[2], model_image2)
+
+                comb_rgb = make_rgb(comb0, comb1, comb2)
+
+
+                chi2 =  ( ( (model_image0-sim.imlist[0])**2).sum() / sim['noise_sigma']**2 )
+                chi2 +=  ( ( (model_image1-sim.imlist[1])**2).sum() / sim['noise_sigma']**2 )
+                chi2 +=  ( ( (model_image2-sim.imlist[2])**2).sum() / sim['noise_sigma']**2 )
+
+                npars_tot=nobj*6+nband
+                dof = 3*model_image0.size - npars_tot
+                chi2per = chi2/dof
+                print("chi2per:",chi2per)
+
+                if args.show or args.save or args.show_corrected:
+                    import images
+                    import biggles
+                    plt = biggles.Table(
+                        2, 1,
+                        #1,2,
+                        #aspect_ratio=2.0/3.0,
+                        aspect_ratio=0.5,
+                        #title=r'$\chi^2/dof: %.2f$' % chi2per,
+                    )
+                    plt[0,0] = images.view(comb_rgb/comb_rgb.max(),
+                                           title='image and diff',
+                                           #scale=True,
+                                           show=False)
+                    plt[1,0] = images.view(segmap, title='segmap', show=False)
+                    #plt[1,0] = images.view(diff,
+                    #                       title='image-model',
+                    #                       scale=True,
+                    #                       show=False)
+
 
                     if args.show:
-                        tab.show(
-                            width=args.corrected_size,
-                            height=args.corrected_size*arat,
+                        plt.show(
+                            width=args.size*2,
+                            height=args.size,
                         )
+
                     if args.save:
-                        pngname='%s-corr-%d-%06d.png' % (filebase,args.seed,i)
+                        pngname='%s-diff-%06d' % (filebase,i)
+                        if args.stamps:
+                            pngname += '-stamps'
+                        pngname += '.png'
                         print("writing:",pngname)
-                        tab.write_img(
-                            args.corrected_size,
-                            args.corrected_size*arat,
-                            pngname,
-                        )
+                        plt.write_img(args.size, args.size, pngname)
+
+                    nobj=fitter.get_nobj()
+                    if nobj > 1 and args.show_corrected:
+                        import esutil as eu
+                        grid=eu.plotting.Grid(nobj)
+                        tab=biggles.Table(grid.nrow, grid.ncol)
+                        arat=float(grid.nrow)/grid.ncol
+                        tab.aspect_ratio=arat
+                        for ishow in range(nobj):
+                            row,col=grid.get_rowcol(ishow)
+
+                            tobs=fitter.make_corrected_obs(ishow,band=0,obsnum=0)
+                            tab[row,col]=images.view(
+                                tobs.image,
+                                show=False,
+                                title='%d' % ishow,
+                            )
+
+                        if args.show:
+                            tab.show(
+                                width=args.corrected_size,
+                                height=args.corrected_size*arat,
+                            )
+                        if args.save:
+                            pngname='%s-corr-%d-%06d.png' % (filebase,args.seed,i)
+                            print("writing:",pngname)
+                            tab.write_img(
+                                args.corrected_size,
+                                args.corrected_size*arat,
+                                pngname,
+                            )
 
 
 
-                if args.show or args.show_corrected:
-                    if input('hit a key (q to quit): ')=='q':
-                        return
+                    if args.show or args.show_corrected:
+                        if i < (args.ntrial-1) and input('hit a key (q to quit): ')=='q':
+                            return
 
     nuse=args.ntrial-nfail
     print("nfail: %d / %d %g" % (nfail, args.ntrial, float(nfail)/args.ntrial))

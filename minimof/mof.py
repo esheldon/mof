@@ -17,6 +17,7 @@ from ngmix.observation import Observation,ObsList,MultiBandObsList,get_mb_obs
 from ngmix.gmix import GMixList,MultiBandGMixList
 from ngmix.gexceptions import GMixRangeError
 from ngmix.priors import LOWVAL
+from . import priors
 
 # weaker than usual
 _default_lm_pars={
@@ -283,7 +284,7 @@ class MOF(LMSimple):
 
         return pars
 
-    def get_gmix(self, band=0):
+    def get_gmix(self, band=0, pars=None):
         """
         Get a gaussian mixture at the fit parameter set, which
         definition depends on the sub-class
@@ -293,11 +294,13 @@ class MOF(LMSimple):
         band: int, optional
             Band index, default 0
         """
-        res=self.get_result()
-        band_pars=self.get_band_pars(res['pars'], band)
+        if pars is None:
+            res=self.get_result()
+            pars=res['pars']
+        band_pars=self.get_band_pars(pars, band)
         return self._make_model(band_pars)
 
-    def get_convolved_gmix(self, band=0, obsnum=0):
+    def get_convolved_gmix(self, band=0, obsnum=0, pars=None):
         """
         get a gaussian mixture at the fit parameters, convolved by the psf if
         fitting a pre-convolved model
@@ -311,7 +314,7 @@ class MOF(LMSimple):
             default 0
         """
 
-        gm = self.get_gmix(band=band)
+        gm = self.get_gmix(band=band, pars=pars)
         obs = self.obs[band][obsnum]
         if obs.has_psf_gmix():
             gm = gm.convolve(obs.psf.gmix)
@@ -531,31 +534,6 @@ class MOFStamps(MOF):
 
         self.totpix=totpix
 
-    def _make_lists(self):
-        """
-        lists of references.
-        """
-        raise NotImplementedError('implement this')
-        pixels_list      = []
-        gmix_data_list   = []
-
-        for band in xrange(self.nband):
-
-            obs_list=self.obs[band]
-            gmix_list=self._gmix_all[band]
-
-            for obs,gm in zip(obs_list, gmix_list):
-
-                gmdata=gm.get_data()
-
-                pixels_list.append(obs._pixels)
-                gmix_data_list.append(gmdata)
-
-
-        self._pixels_list=pixels_list
-        self._gmix_data_list=gmix_data_list
-
-
     def get_fit_stats(self, pars):
         return {}
 
@@ -656,6 +634,27 @@ class MOFStamps(MOF):
             start,
         )
 
+    def get_convolved_gmix(self, index, band=0, obsnum=0, pars=None):
+
+        gm0 = self.get_gmix(index, band=band, pars=pars)
+
+        obs=self.list_of_obs[index][band][obsnum]
+        psf_gmix = obs.psf.gmix
+        return gm0.convolve(psf_gmix)
+
+    def get_gmix(self, index, band=0, pars=None):
+        if pars is None:
+            res=self.get_result()
+            pars=res['pars']
+
+        tpars = self.get_object_band_pars(
+            pars,
+            index,
+            band,
+        )
+
+        gm0 = self._make_model(tpars)
+        return gm0
 
 
     def _init_gmix_all(self, pars):
@@ -947,6 +946,50 @@ class GMixModelMulti(GMix):
         return image
     '''
 
+def get_full_image_guesses(objects, nband, jacobian, model, rng):
+
+    assert model=="bdf"
+
+    scale=jacobian.get_scale()
+    pos_range = scale*0.1
+
+    npars_per=6+nband
+    nobj=len(objects)
+
+    npars_tot = nobj*npars_per
+    guess = np.zeros(npars_tot)
+
+    for i in xrange(nobj):
+        row=objects['y'][i]
+        col=objects['x'][i]
+
+        v, u = jacobian(row, col)
+
+        T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+        flux=scale**2 * objects['flux'][i]
+
+        beg=i*npars_per
+
+        # always close guess for center
+        guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
+        guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
+
+        # always arbitrary guess for shape
+        guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
+        guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
+
+        guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+        # arbitrary guess for fracdev
+        guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+
+        for band in xrange(nband):
+            guess[beg+6+band] = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+    return guess
+
+
+
 def get_stamp_guesses(list_of_obs, detband, model, rng):
     """
     get a guess based on metadata in the obs
@@ -1002,13 +1045,69 @@ def get_stamp_guesses(list_of_obs, detband, model, rng):
 
     return guess
 
-def get_mof_prior(list_of_obs, model, rng):
+def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
+    """
+    Note a single jacobian is being sent.  for multi-band this
+    is the same as assuming they are all on the same coordinate system.
+    
+    assuming all images have the 
+    prior for N objects.  The priors are the same for
+    structural parameters, the only difference being the
+    centers
+    """
+
+    assert model=="bdf"
+
+    nobj=len(objects)
+
+    cen_priors=[]
+
+    cen_sigma=jacobian.get_scale() # a pixel
+    for i in xrange(nobj):
+        row=objects['y'][i]#-1
+        col=objects['x'][i]#-1
+
+        v, u = jacobian(row, col)
+        p=ngmix.priors.CenPrior(
+            v,
+            u,
+            cen_sigma, cen_sigma,
+            rng=rng,
+        )
+        cen_priors.append(p)
+
+    g_prior=ngmix.priors.GPriorBA(
+        0.2,
+        rng=rng,
+    )
+    T_prior = ngmix.priors.TwoSidedErf(
+        -1.0, 0.1, 1.0e6, 1.0e5,
+        rng=rng,
+    )
+
+    fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
+    #fracdev_prior = ngmix.priors.Normal(0.0, 100, rng=rng)
+
+    F_prior = ngmix.priors.TwoSidedErf(
+        -100.0, 1.0, 1.0e9, 1.0e8,
+        rng=rng,
+    )
+
+    return priors.PriorBDFSepMulti(
+        cen_priors,
+        g_prior,
+        T_prior,
+        fracdev_prior,
+        [F_prior]*nband,
+    )
+
+
+def get_mof_stamps_prior(list_of_obs, model, rng):
     """
     Not generic, need to let this be configurable
     """
     assert model=="bdf"
 
-    nobj=len(list_of_obs)
     nband=len(list_of_obs[0])
 
     obs=list_of_obs[0][0][0] 

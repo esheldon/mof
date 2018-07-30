@@ -1,14 +1,12 @@
-# scale of object in arcseconds.  Currently this
+# scale of entire group in arcseconds.  Currently this
 # is a gaussian sigma
 cluster_scale: 2.0
-#dims: [48, 48]
 dims: [64,64]
 nobj: 8
 models: ['bulge+disk']
 pixel_scale: 0.263
 
 noise_sigma: 0.04
-#psf_dims: [25,25]
 psf_noise_sigma: 0.0001
 
 pdfs:

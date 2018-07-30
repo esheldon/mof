@@ -1,7 +1,5 @@
 """
 TODO:
-    plot position in stamp
-    plot objects with residuals
     fit statistics
         s/n, chi2/dof, etc.
         probably easiest to calculate s/n of model, roundified
@@ -10,14 +8,32 @@ TODO:
     explore threshold
         how many spurious?  maybe test with nothing images
 
+    make import of this module optional to avoid MEDS dependency
 """
 from __future__ import print_function
 import numpy as np
 import esutil as eu
 import meds
 import ngmix
+import time
 
 from . import mof
+
+class MultiBandMEDS(object):
+    def __init__(self, mlist):
+        self.mlist=mlist
+
+    def get_mbobs(self, iobj, weight_type='weight'):
+        """
+        get a multiband obs list
+        """
+        mbobs=ngmix.MultiBandObsList()
+
+        for m in self.mlist:
+            obslist = m.get_obslist(iobj, weight_type=weight_type)
+            mbobs.append(obslist)
+
+        return mbobs
 
 class MEDSInterface(meds.MEDS):
     def __init__(self, image, weight, seg, bmask, cat):
@@ -212,6 +228,18 @@ class MEDSifier(object):
 
         self._set_detim()
         self._run_sep()
+
+    def get_multiband_meds(self):
+        """
+        get a MultiBandMEDS object holding all bands
+        """
+
+        mlist=[]
+        for band in xrange(len(self.datalist)):
+            m=self.get_meds(band)
+            mlist.append(m)
+
+        return MultiBandMEDS(mlist)
 
     def get_meds(self, band):
         """
@@ -421,15 +449,14 @@ def get_psf_obs(psfim, jacobian):
     return psf_obs
 
 
-def test(dim=2000):
+def test(ntrial=1, dim=2000, show=False):
     import galsim
     import biggles
     import images
 
     rng=np.random.RandomState()
 
-    nobj=4
-    #nobj=2
+    nobj_per=4
     nknots=100
     knot_flux_frac=0.001
     nknots_low, nknots_high=1,100
@@ -439,7 +466,6 @@ def test(dim=2000):
     scale=0.263
 
     psf=galsim.Gaussian(fwhm=0.9)
-    all_band_obj=[]
     dims=64,64
     flux_low, flux_high=0.5,1.5
     r50_low,r50_high=0.1,2.0
@@ -459,201 +485,207 @@ def test(dim=2000):
 
     sigma=dims[0]/2.0/4.0*scale
     maxrad=dims[0]/2.0/2.0 * scale
-    for i in xrange(nobj):
 
-        nknots=int(rng.uniform(low=nknots_low, high=nknots_high))
+    tm0 = time.time()
+    nobj_meas = 0
 
-        r50=rng.uniform(low=r50_low, high=r50_high)
-        flux = rng.uniform(low=flux_low, high=flux_high)
+    for trial in xrange(ntrial):
+        print("trial: %d/%d" % (trial+1,ntrial))
+        all_band_obj=[]
+        for i in xrange(nobj_per):
 
-        #dx,dy=rng.uniform(low=-3.0, high=3.0, size=2)
-        dx,dy=rng.normal(scale=sigma, size=2).clip(min=-maxrad, max=maxrad)
+            nknots=int(rng.uniform(low=nknots_low, high=nknots_high))
 
-        g1d,g2d=rng.normal(scale=0.2, size=2).clip(max=0.5)
-        g1b=0.5*g1d+rng.normal(scale=0.02)
-        g2b=0.5*g2d+rng.normal(scale=0.02)
+            r50=rng.uniform(low=r50_low, high=r50_high)
+            flux = rng.uniform(low=flux_low, high=flux_high)
 
-        fracdev=rng.uniform(low=fracdev_low, high=fracdev_high)
+            #dx,dy=rng.uniform(low=-3.0, high=3.0, size=2)
+            dx,dy=rng.normal(scale=sigma, size=2).clip(min=-maxrad, max=maxrad)
 
-        flux_bulge = fracdev*flux
-        flux_disk  = (1-fracdev)*flux
-        flux_knots = nknots*knot_flux_frac*flux_disk
-        print("fracdev:",fracdev,"nknots:",nknots)
+            g1d,g2d=rng.normal(scale=0.2, size=2).clip(max=0.5)
+            g1b=0.5*g1d+rng.normal(scale=0.02)
+            g2b=0.5*g2d+rng.normal(scale=0.02)
 
-        bulge_obj = galsim.DeVaucouleurs(
-            half_light_radius=r50
-        ).shear(g1=g1b,g2=g2b)
+            fracdev=rng.uniform(low=fracdev_low, high=fracdev_high)
 
-        disk_obj = galsim.Exponential(
-            half_light_radius=r50
-        ).shear(g1=g1d,g2=g2d)
+            flux_bulge = fracdev*flux
+            flux_disk  = (1-fracdev)*flux
+            flux_knots = nknots*knot_flux_frac*flux_disk
+            print("fracdev:",fracdev,"nknots:",nknots)
 
-        knots_obj = galsim.RandomWalk(
-            npoints=nknots,
-            profile=disk_obj,
-            #half_light_radius=r50
-        )#.shear(g1=g1d,g2=g2d)
+            bulge_obj = galsim.DeVaucouleurs(
+                half_light_radius=r50
+            ).shear(g1=g1b,g2=g2b)
+
+            disk_obj = galsim.Exponential(
+                half_light_radius=r50
+            ).shear(g1=g1d,g2=g2d)
+
+            knots_obj = galsim.RandomWalk(
+                npoints=nknots,
+                profile=disk_obj,
+                #half_light_radius=r50
+            )#.shear(g1=g1d,g2=g2d)
 
 
-        band_objs = []
+            band_objs = []
+            for band in xrange(nband):
+                band_disk=disk_obj.withFlux(flux_disk*disk_colors[band])
+                band_bulge=bulge_obj.withFlux(flux_bulge*bulge_colors[band])
+                band_knots=knots_obj.withFlux(flux_knots*knots_colors[band])
+                #print(band_disk.flux, band_bulge.flux, band_knots.flux)
+
+                #obj = galsim.Sum(band_disk, band_bulge, band_knots).shift(dx=dx, dy=dy)
+                obj = galsim.Sum(band_disk, band_bulge).shift(dx=dx, dy=dy)
+                #obj = galsim.Sum(band_disk).shift(dx=dx, dy=dy)
+                obj=galsim.Convolve(obj, psf)
+                band_objs.append( obj )
+
+
+            all_band_obj.append( band_objs )
+
+        jacob=ngmix.DiagonalJacobian(
+            row=0,
+            col=0,
+            scale=scale,
+        )
+        wcs=jacob.get_galsim_wcs()
+        psfim = psf.drawImage(wcs=wcs).array
+        psf_obs=get_psf_obs(psfim, jacob)
+
+        dlist=[]
         for band in xrange(nband):
-            band_disk=disk_obj.withFlux(flux_disk*disk_colors[band])
-            band_bulge=bulge_obj.withFlux(flux_bulge*bulge_colors[band])
-            band_knots=knots_obj.withFlux(flux_knots*knots_colors[band])
-            #print(band_disk.flux, band_bulge.flux, band_knots.flux)
+            band_objects = [ o[band] for o in all_band_obj ]
+            obj = galsim.Sum(band_objects)
 
-            #obj = galsim.Sum(band_disk, band_bulge, band_knots).shift(dx=dx, dy=dy)
-            obj = galsim.Sum(band_disk, band_bulge).shift(dx=dx, dy=dy)
-            obj=galsim.Convolve(obj, psf)
-            band_objs.append( obj )
+            im = obj.drawImage(nx=dims[1], ny=dims[0], wcs=wcs).array
+            #if band==0:
+            #    im = obj.drawImage(scale=scale).array
+            #    dims=im.shape
+            #else:
+            #    im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
+            im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
 
+            im += rng.normal(scale=noises[band], size=im.shape)
+            wt = im*0 + 1.0/noises[band]**2
 
-        all_band_obj.append( band_objs )
-
-    jacob=ngmix.DiagonalJacobian(
-        row=0,
-        col=0,
-        scale=scale,
-    )
-    wcs=jacob.get_galsim_wcs()
-    psfim = psf.drawImage(wcs=wcs).array
-    psf_obs=get_psf_obs(psfim, jacob)
-
-    dlist=[]
-    for band in xrange(nband):
-        band_objects = [ o[band] for o in all_band_obj ]
-        obj = galsim.Sum(band_objects)
-
-        im = obj.drawImage(nx=dims[1], ny=dims[0], wcs=wcs).array
-        #if band==0:
-        #    im = obj.drawImage(scale=scale).array
-        #    dims=im.shape
-        #else:
-        #    im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
-        im = obj.drawImage(nx=dims[1], ny=dims[0], scale=scale).array
-
-        im += rng.normal(scale=noises[band], size=im.shape)
-        wt = im*0 + 1.0/noises[band]**2
-
-        dlist.append(
-            dict(
-                image=im,
-                weight=wt,
-                wcs=wcs,
+            dlist.append(
+                dict(
+                    image=im,
+                    weight=wt,
+                    wcs=wcs,
+                )
             )
+
+
+        mer=MEDSifier(dlist)
+
+        mg=mer.get_meds(0)
+        mr=mer.get_meds(1)
+        mi=mer.get_meds(2)
+        nobj=mg.size
+        print("        found",nobj,"objects")
+        nobj_meas += nobj
+
+        #3imlist=[]
+        list_of_obs=[]
+        for i in xrange(nobj):
+
+            img=mg.get_cutout(i,0)
+            imr=mr.get_cutout(i,0)
+            imi=mi.get_cutout(i,0)
+
+            gobslist=mg.get_obslist(i,weight_type='uberseg')
+            robslist=mr.get_obslist(i,weight_type='uberseg')
+            iobslist=mi.get_obslist(i,weight_type='uberseg')
+            mbo=ngmix.MultiBandObsList()
+            mbo.append(gobslist)
+            mbo.append(robslist)
+            mbo.append(iobslist)
+
+            list_of_obs.append(mbo)
+
+            '''
+            trgb=images.get_color_image(
+                #imi*fac,imr*fac,img*fac,
+                imi.transpose(),
+                imr.transpose(),
+                img.transpose(),
+                nonlinear=0.1,
+            )
+            trgb *= 1.0/trgb.max()
+            imlist.append(trgb)
+            '''
+
+        for mbo in list_of_obs:
+            for obslist in mbo:
+                for obs in obslist:
+                    obs.set_psf(psf_obs)
+
+        prior=mof.get_mof_prior(list_of_obs, "bdf", rng)
+        mof_fitter=mof.MOFStamps(
+            list_of_obs,
+            "bdf",
+            prior=prior,
         )
+        band=2
+        guess=mof.get_stamp_guesses(list_of_obs, band, "bdf", rng)
+        mof_fitter.go(guess)
 
-    tab=biggles.Table(1,2)
-    rgb=images.get_color_image(
-        #imi*fac,imr*fac,img*fac,
-        dlist[2]['image'].transpose(),
-        dlist[1]['image'].transpose(),
-        dlist[0]['image'].transpose(),
-        nonlinear=0.1,
-    )
-    rgb *= 1.0/rgb.max()
-    #images.view(rgb)
- 
-    mer=MEDSifier(dlist)
-    tab[0,0] = images.view_mosaic(
-        [rgb,
-         mer.seg,
-         mer.detim],
-        titles=['image','seg','detim'],
-        show=False,
-        #dims=[dim, dim],
-    )
-
-    mg=mer.get_meds(0)
-    mr=mer.get_meds(1)
-    mi=mer.get_meds(2)
-    nobj=mg.size
-
-    imlist=[]
-    list_of_obs=[]
-    for i in xrange(nobj):
-
-        img=mg.get_cutout(i,0)
-        imr=mr.get_cutout(i,0)
-        imi=mi.get_cutout(i,0)
-
-        gobslist=mg.get_obslist(i,weight_type='uberseg')
-        robslist=mr.get_obslist(i,weight_type='uberseg')
-        iobslist=mi.get_obslist(i,weight_type='uberseg')
-        mbo=ngmix.MultiBandObsList()
-        mbo.append(gobslist)
-        mbo.append(robslist)
-        mbo.append(iobslist)
-
-        list_of_obs.append(mbo)
-
-        rgb=images.get_color_image(
-            #imi*fac,imr*fac,img*fac,
-            imi.transpose(),
-            imr.transpose(),
-            img.transpose(),
-            nonlinear=0.1,
-        )
-        rgb *= 1.0/rgb.max()
-        imlist.append(rgb)
-
-    for mbo in list_of_obs:
-        for obslist in mbo:
-            for obs in obslist:
-                obs.set_psf(psf_obs)
-
-    prior=mof.get_mof_prior(list_of_obs, "bdf", rng)
-    mof_fitter=mof.MOFStamps(
-        list_of_obs,
-        "bdf",
-        prior=prior,
-    )
-    band=2
-    guess=mof.get_stamp_guesses(list_of_obs, band, "bdf", rng)
-    mof_fitter.go(guess)
-
-    #images.view(rgb)
-    '''
-    tab[0,1]=images.view_mosaic(imlist,show=False)
-    tab.show(width=dim*2, height=dim)
+        if show:
+            # corrected images
+            tab=biggles.Table(1,2)
+            rgb=images.get_color_image(
+                #imi*fac,imr*fac,img*fac,
+                dlist[2]['image'].transpose(),
+                dlist[1]['image'].transpose(),
+                dlist[0]['image'].transpose(),
+                nonlinear=0.1,
+            )
+            rgb *= 1.0/rgb.max()
+         
+            tab[0,0] = images.view_mosaic(
+                [rgb,
+                 mer.seg,
+                 mer.detim],
+                titles=['image','seg','detim'],
+                show=False,
+                #dims=[dim, dim],
+            )
 
 
-    imlist=[]
-    for i in xrange(nobj):
+            imlist=[]
+            for iobj, mobs in enumerate(list_of_obs):
+                cmobs = mof_fitter.make_corrected_obs(iobj)
 
-        im=mg.get_uberseg(i,0)
-        imlist.append(im)
+                gim=images.make_combined_mosaic(
+                    [mobs[0][0].image, cmobs[0][0].image],
+                )
+                rim=images.make_combined_mosaic(
+                    [mobs[1][0].image, cmobs[1][0].image],
+                )
+                iim=images.make_combined_mosaic(
+                    [mobs[2][0].image, cmobs[2][0].image],
+                )
 
-    #images.view(rgb)
-    images.view_mosaic(imlist)
-    '''
-
-    # corrected images
-    imlist=[]
-    for iobj, mobs in enumerate(list_of_obs):
-        cmobs = mof_fitter.make_corrected_obs(iobj)
-
-        gim=images.make_combined_mosaic(
-            [mobs[0][0].image, cmobs[0][0].image],
-        )
-        rim=images.make_combined_mosaic(
-            [mobs[1][0].image, cmobs[1][0].image],
-        )
-        iim=images.make_combined_mosaic(
-            [mobs[2][0].image, cmobs[2][0].image],
-        )
-
-        rgb=images.get_color_image(
-            iim.transpose(),
-            rim.transpose(),
-            gim.transpose(),
-            nonlinear=0.1,
-        )
-        rgb *= 1.0/rgb.max()
-        imlist.append(rgb)
+                rgb=images.get_color_image(
+                    iim.transpose(),
+                    rim.transpose(),
+                    gim.transpose(),
+                    nonlinear=0.1,
+                )
+                rgb *= 1.0/rgb.max()
+                imlist.append(rgb)
 
 
-    plt=images.view_mosaic(imlist,show=False)
-    tab[0,1]=plt
-    tab.show(width=dim*2, height=dim)
+            plt=images.view_mosaic(imlist,show=False)
+            tab[0,1]=plt
+            tab.show(width=dim*2, height=dim)
 
+            if ntrial > 1:
+                if 'q'==raw_input("hit a key: "):
+                    return
+
+    total_time=time.time()-tm0
+    print("time per group:",total_time/ntrial)
+    print("time per object:",total_time/nobj_meas)
