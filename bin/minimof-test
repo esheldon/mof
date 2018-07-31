@@ -3,6 +3,7 @@ from __future__ import print_function
 import os
 import time
 import yaml
+import esutil as eu
 import numpy as np
 import minimof
 from minimof import mof
@@ -166,20 +167,24 @@ def main():
 
     filebase=os.path.basename(args.config_file).replace('.yaml','')
     filebase='%s-%d' % (filebase,args.seed)
+    if args.stamps:
+        filebase += '-stamps'
     fitsfile=filebase+'.fits'
-    print("opening fits file:",fitsfile)
-    fits=fitsio.FITS(fitsfile,mode='rw',clobber=True)
+    print("will write to:",fitsfile)
+
     dt=[
         ('guess','f8',6+nband),
         ('pars','f8',6+nband),
+        ('pars_err','f8',6+nband),
+        ('flux_s2n','f8',nband),
+        ('s2n','f8'),
     ]
-
-    results=[]
 
     detband=2
 
     sim=minimof.moftest.Sim(config, args.seed)
     fitrng = np.random.RandomState(sim.rng.randint(0,2**15))
+    np.random.seed(fitrng.randint(0,2**15))
 
     tm_sim=0.0
     tm_fit=0.0
@@ -187,9 +192,11 @@ def main():
     nfail=0
     ntry=2
 
-    for i in range(args.ntrial):
+    output=[]
+
+    for itrial in range(args.ntrial):
         print("-"*70)
-        print("%d/%d" % (i+1, args.ntrial))
+        print("%d/%d" % (itrial+1, args.ntrial))
 
         this_tm_sim = time.time()
         sim.make_obs()
@@ -215,10 +222,11 @@ def main():
         this_tm_fit = time.time()
 
         if args.stamps:
+
             m=medser.get_multiband_meds()
             list_of_obs=[]
-            for i in xrange(objects.size):
-                mbo = m.get_mbobs(i)
+            for iobj in xrange(objects.size):
+                mbo = m.get_mbobs(iobj)
 
                 for olist in mbo:
                     for o in olist:
@@ -293,12 +301,15 @@ def main():
         else:
 
             npars_per=guess.size//nobj
-            if args.save:
 
-                output=np.zeros(nobj, dtype=dt)
-                output['guess'] = guess.reshape(nobj, npars_per)
-                output['pars'] = res['pars'].reshape(nobj, npars_per)
-                fits.write(output)
+            data = np.zeros(nobj, dtype=dt)
+            data['guess'] = guess.reshape(nobj, npars_per)
+            data['pars'] = res['pars'].reshape(nobj, npars_per)
+            perr=np.sqrt(np.diag(res['pars_cov']))
+            data['pars_err'] = perr.reshape(nobj, npars_per)
+            data['flux_s2n'] = data['pars'][:,6:]/data['pars_err'][:,6:]
+            data['s2n'] = np.sqrt( (data['flux_s2n']**2).sum(axis=1) )
+            output.append(data)
 
             if args.show or args.save:
                 print("nfev:",res['nfev'])
@@ -370,7 +381,7 @@ def main():
                         )
 
                     if args.save:
-                        pngname='%s-diff-%06d' % (filebase,i)
+                        pngname='%s-diff-%06d' % (filebase,itrial)
                         if args.stamps:
                             pngname += '-stamps'
                         pngname += '.png'
@@ -379,7 +390,6 @@ def main():
 
                     nobj=fitter.get_nobj()
                     if nobj > 1 and args.show_corrected:
-                        import esutil as eu
                         grid=eu.plotting.Grid(nobj)
                         tab=biggles.Table(grid.nrow, grid.ncol)
                         arat=float(grid.nrow)/grid.ncol
@@ -400,7 +410,7 @@ def main():
                                 height=args.corrected_size*arat,
                             )
                         if args.save:
-                            pngname='%s-corr-%d-%06d.png' % (filebase,args.seed,i)
+                            pngname='%s-corr-%d-%06d.png' % (filebase,args.seed,itrial)
                             print("writing:",pngname)
                             tab.write_img(
                                 args.corrected_size,
@@ -411,8 +421,12 @@ def main():
 
 
                     if args.show or args.show_corrected:
-                        if i < (args.ntrial-1) and input('hit a key (q to quit): ')=='q':
+                        if (itrial < (args.ntrial-1)
+                                and input('hit a key (q to quit): ')=='q'):
                             return
+
+    output = eu.numpy_util.combine_arrlist(output)
+    fitsio.write(fitsfile, output, clobber=True)
 
     nuse=args.ntrial-nfail
     print("nfail: %d / %d %g" % (nfail, args.ntrial, float(nfail)/args.ntrial))

@@ -1,5 +1,10 @@
 """
 assumes the psf is constant across the input larger image
+todo:
+    the real result is the full set of parameters and
+    covariance
+
+    but need to unpack results for individual objects, get an s/n etc.
 """
 from __future__ import print_function
 import numpy as np
