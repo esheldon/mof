@@ -487,7 +487,6 @@ class MOFStamps(MOF):
         get an observation for the given object and band
         with all the neighbors subtracted from the image
         """
-        import images
         pars=self.get_result()['pars']
 
         ref_obs = self.list_of_obs[index][band][obsnum]
@@ -495,7 +494,6 @@ class MOFStamps(MOF):
         jacob=ref_obs.jacobian
 
         image = ref_obs.image.copy()
-        #images.view(image,title='original image',scale=True)
 
         nbr_data=ref_obs.meta['nbr_data']
         if len(nbr_data) > 0:
@@ -518,13 +516,8 @@ class MOFStamps(MOF):
                 gm=gm0.convolve(psf_gmix)
 
                 modelim = gm.make_image(image.shape, jacobian=jacob)
-                #images.view(modelim,title='model image',scale=True)
 
                 image -= modelim
-            #images.view(image,title='correctedimage',scale=True)
-
-        #if 'q'==raw_input("band %s hit a key: " % band):
-        #    stop
 
         return image
 
