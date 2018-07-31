@@ -203,6 +203,10 @@ class MOF(LMSimple):
         """
 
         ref_obs = self.obs[band][obsnum]
+        image = ref_obs.image.copy()
+
+        if self.nobj == 1:
+            return image
 
         model_image = self.make_image(band=band, obsnum=obsnum)
 
@@ -218,7 +222,6 @@ class MOF(LMSimple):
         iimage = gmi.make_image(model_image.shape, jacobian=ref_obs.jacobian)
         model_image -= iimage
 
-        image = ref_obs.image.copy()
         image -= model_image
 
         return image
