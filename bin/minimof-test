@@ -173,6 +173,7 @@ def main():
     print("will write to:",fitsfile)
 
     dt=[
+        ('psf_T','f8'),
         ('guess','f8',6+nband),
         ('pars','f8',6+nband),
         ('pars_err','f8',6+nband),
@@ -303,6 +304,8 @@ def main():
             npars_per=guess.size//nobj
 
             data = np.zeros(nobj, dtype=dt)
+            # assuming same psf T for all
+            data['psf_T'] = sim.psf_obs.gmix.get_T()
             data['guess'] = guess.reshape(nobj, npars_per)
             data['pars'] = res['pars'].reshape(nobj, npars_per)
             perr=np.sqrt(np.diag(res['pars_cov']))

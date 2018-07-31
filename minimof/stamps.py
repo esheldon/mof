@@ -12,7 +12,9 @@ TODO:
 """
 from __future__ import print_function
 import numpy as np
+from numpy import pi
 import esutil as eu
+from esutil.numpy_util import between
 import meds
 import ngmix
 import time
@@ -294,55 +296,67 @@ class MEDSifier(object):
             segmentation_map=True,
         )
 
-        kronrad, krflag = sep.kron_radius(
-            self.detim,
-            objs['x'],
-            objs['y'],
-            objs['a'],
-            objs['b'],
-            objs['theta'],
-            6.0,
+        flux_auto=np.zeros(objs.size)-9999.0
+        fluxerr_auto=np.zeros(objs.size)-9999.0
+        flux_radius=np.zeros(objs.size)-9999.0
+        kron_radius=np.zeros(objs.size)-9999.0
+
+        w,=np.where(
+              (objs['a'] >= 0.0)
+            & (objs['b'] >= 0.0)
+            & between(objs['theta'], -pi/2., pi/2., type='[]')
         )
-        flux_auto, fluxerr_auto, flag_auto = \
-            sep.sum_ellipse(
+
+        if w.size > 0:
+            kron_radius[w], krflag = sep.kron_radius(
                 self.detim,
-                objs['x'],
-                objs['y'],
-                objs['a'],
-                objs['b'],
-                objs['theta'],
-                2.5*kronrad,
-                subpix=1,
+                objs['x'][w],
+                objs['y'][w],
+                objs['a'][w],
+                objs['b'][w],
+                objs['theta'][w],
+                6.0,
             )
-        objs['flag'] |= krflag
+            objs['flag'][w] |= krflag
 
-        # should bail now if fails I think
+            aper_rad = 2.5*kron_radius
+            flux_auto[w], fluxerr_auto[w], flag_auto = \
+                sep.sum_ellipse(
+                    self.detim,
+                    objs['x'][w],
+                    objs['y'][w],
+                    objs['a'][w],
+                    objs['b'][w],
+                    objs['theta'][w],
+                    aper_rad[w],
+                    subpix=1,
+                )
+            objs['flag'][w] |= flag_auto
 
-        # what we did in DES, but note threshold above
-        # is 1 as opposed to wide survey. deep survey
-        # was even lower, 0.8?
+            # what we did in DES, but note threshold above
+            # is 1 as opposed to wide survey. deep survey
+            # was even lower, 0.8?
 
-        # used half light radius
-        PHOT_FLUXFRAC = 0.5
+            # used half light radius
+            PHOT_FLUXFRAC = 0.5
 
-        flux_radius, frflag = sep.flux_radius(
-            self.detim,
-            objs['x'],
-            objs['y'],
-            6.*objs['a'],
-            PHOT_FLUXFRAC,
-            normflux=flux_auto,
-            subpix=5,
-        )
-        objs['flag'] |= frflag  # combine flags into 'flag'
-
-
+            flux_radius[w], frflag = sep.flux_radius(
+                self.detim,
+                objs['x'][w],
+                objs['y'][w],
+                6.*objs['a'][w],
+                PHOT_FLUXFRAC,
+                normflux=flux_auto[w],
+                subpix=5,
+            )
+            objs['flag'][w] |= frflag  # combine flags into 'flag'
 
         ncut=2 # need this to make sure array
         new_dt=[
             ('id','i8'),
             ('number','i4'),
             ('ncutout','i4'),
+            ('kron_radius','f4'),
             ('flux_auto','f4'),
             ('fluxerr_auto','f4'),
             ('flux_radius','f4'),
@@ -367,6 +381,7 @@ class MEDSifier(object):
         cat['id'] = np.arange(cat.size)
         cat['number'] = np.arange(1,cat.size+1)
         cat['ncutout'] = 1
+        cat['flux_auto'] = kron_radius
         cat['flux_auto'] = flux_auto
         cat['fluxerr_auto'] = fluxerr_auto
         cat['flux_radius'] = flux_radius
