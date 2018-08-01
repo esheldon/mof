@@ -25,6 +25,22 @@ class MultiBandMEDS(object):
     def __init__(self, mlist):
         self.mlist=mlist
 
+    def get_list_of_mbobs(self, indices=None, weight_type='weight'):
+        """
+        get a list of MultiBandObsList for every object or
+        the specified indices
+        """
+
+        if indices is None:
+            indices = np.arange(self.mlist[0].size)
+
+        list_of_obs=[]
+        for iobj in indices:
+            mbobs=self.get_mbobs(iobj, weight_type=weight_type)
+            list_of_obs.append(mbobs)
+
+        return list_of_obs
+
     def get_mbobs(self, iobj, weight_type='weight'):
         """
         get a multiband obs list

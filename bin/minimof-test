@@ -25,6 +25,10 @@ parser.add_argument('ntrial',type=int,help='number to simulate')
 parser.add_argument('--stamps',
                     action='store_true',
                     help='use postage stamps')
+parser.add_argument('--uberseg',
+                    action='store_true',
+                    help='use uberseg')
+
 
 
 
@@ -169,6 +173,13 @@ def main():
     filebase='%s-%d' % (filebase,args.seed)
     if args.stamps:
         filebase += '-stamps'
+
+    if args.uberseg:
+        filebase += '-uberseg'
+        weight_type='uberseg'
+    else:
+        weight_type='weight'
+
     fitsfile=filebase+'.fits'
     print("will write to:",fitsfile)
 
@@ -227,7 +238,7 @@ def main():
             m=medser.get_multiband_meds()
             list_of_obs=[]
             for iobj in xrange(objects.size):
-                mbo = m.get_mbobs(iobj)
+                mbo = m.get_mbobs(iobj, weight_type=weight_type)
 
                 for olist in mbo:
                     for o in olist:
@@ -387,9 +398,11 @@ def main():
                         pngname='%s-diff-%06d' % (filebase,itrial)
                         if args.stamps:
                             pngname += '-stamps'
+                        if args.uberseg:
+                            pngname += '-uberseg'
                         pngname += '.png'
                         print("writing:",pngname)
-                        plt.write_img(args.size, args.size, pngname)
+                        plt.write_img(2*args.size, args.size, pngname)
 
                     nobj=fitter.get_nobj()
                     if nobj > 1 and args.show_corrected:
