@@ -342,7 +342,6 @@ class MOFStamps(MOF):
         list_of_obs is not an ObsList, it is a python list of 
         Observation/ObsList/MultiBandObsList
         """
-        #super(LMSimple,self).__init__(obs, model, **keys)
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()

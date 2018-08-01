@@ -1,7 +1,7 @@
 from . import minimof
 from .minimof import MiniMOF
 from . import mof
-from .mof import MOF
+from .mof import MOF, MOFStamps
 
 from . import priors
 

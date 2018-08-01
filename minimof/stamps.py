@@ -25,7 +25,7 @@ class MultiBandMEDS(object):
     def __init__(self, mlist):
         self.mlist=mlist
 
-    def get_list_of_mbobs(self, indices=None, weight_type='weight'):
+    def get_mbobs_list(self, indices=None, weight_type='weight'):
         """
         get a list of MultiBandObsList for every object or
         the specified indices
