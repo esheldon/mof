@@ -454,6 +454,7 @@ class MOFStamps(MOF):
 
         res={}
 
+        res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
@@ -466,6 +467,17 @@ class MOFStamps(MOF):
         res['T']        = res['pars'][4]
         res['T_err']    = np.sqrt(res['pars_cov'][4,4])
         res['T_ratio']  = res['T']/res['psf_T']
+
+        if self.model_name=='bdf':
+            res['fracdev'] = res['pars'][5]
+            res['fracdev_err'] = np.sqrt(res['pars_cov'][5,5])
+            flux_start=6
+        else:
+            flux_start=5
+
+        res['flux'] = res['pars'][flux_start:]
+        res['flux_cov'] = res['pars_cov'][flux_start:,flux_start:]
+        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
 
         return res
 
