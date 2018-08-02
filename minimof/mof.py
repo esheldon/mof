@@ -236,11 +236,25 @@ class MOF(LMSimple):
 
 
     def get_object_pars(self, pars_in, iobj):
+        """
+        extract parameters for the given object
+        """
         nper=self.npars_per
         ibeg = iobj*self.npars_per
         iend = (iobj+1)*self.npars_per
 
         return pars_in[ibeg:iend].copy()
+
+    def get_object_cov(self, cov_in, iobj):
+        """
+        extract covariance for the given object
+        """
+        nper=self.npars_per
+        ibeg = iobj*self.npars_per
+        iend = (iobj+1)*self.npars_per
+
+        return cov_in[ibeg:iend, ibeg:iend].copy()
+
 
     def get_object_band_pars(self, pars_in, iobj, band):
         nbper=self.nband_pars_per
@@ -410,6 +424,96 @@ class MOFStamps(MOF):
             result.update(stat_dict)
 
         self._result=result
+
+    def get_result_list(self):
+        """
+        get results split up for each object
+        """
+        if not hasattr(self,'_result_list'):
+            self._make_result_list()
+
+        return self._result_list
+
+    def _make_result_list(self):
+        """
+        get fit statistics for each object separately
+        """
+        reslist=[]
+        for i in xrange(self.nobj):
+            res=self._get_object_result(i)
+            reslist.append(res)
+
+        self._result_list = reslist
+
+    def _get_object_result(self, i):
+
+        pars=self._result['pars']
+        pars_cov=self._result['pars_cov']
+
+        pres=self.get_object_psf_stats(i)
+
+        res={}
+
+        res['psf_g'] = pres['g']
+        res['psf_T'] = pres['T']
+
+        res['nfev']     = self._result['nfev']
+        res['s2n']      = self.get_object_s2n(i)
+        res['pars']     = self.get_object_pars(pars,i)
+        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+        res['g']        = res['pars'][2:2+2].copy()
+        res['g_cov']    = res['pars_cov'][2:2+2,2:2+2].copy()
+        res['T']        = res['pars'][4]
+        res['T_err']    = np.sqrt(res['pars_cov'][4,4])
+        res['T_ratio']  = res['T']/res['psf_T']
+
+        return res
+
+    def get_object_s2n(self, i):
+        """
+        get the s/n for the given object.  This uses just the model
+        to calculate the s/n, but does use the full weight map
+        """
+        s2n_sum=0.0
+        mbobs=self.list_of_obs[i]
+        for band,obslist in enumerate(mbobs):
+            for obsnum,obs in enumerate(obslist):
+                gm = self.get_convolved_gmix(i, band=band, obsnum=obsnum)
+                s2n_sum += gm.get_model_s2n_sum(obs)
+
+        return np.sqrt(s2n_sum)
+
+    def get_object_psf_stats(self, i):
+        """
+        get the s/n for the given object.  This uses just the model
+        to calculate the s/n, but does use the full weight map
+        """
+        g1sum=0.0
+        g2sum=0.0
+        Tsum=0.0
+        wsum=0.0
+
+        mbobs=self.list_of_obs[i]
+        for band,obslist in enumerate(mbobs):
+            for obsnum,obs in enumerate(obslist):
+                twsum=obs.weight.sum()
+                wsum += twsum
+
+                tg1, tg2, tT = obs.psf.gmix.get_g1g2T()
+
+                g1sum += tg1*twsum
+                g2sum += tg2*twsum
+                Tsum += tT*twsum
+
+        g1 = g1sum/wsum
+        g2 = g2sum/wsum
+        T = Tsum/wsum
+
+        return {
+            'g':[g1,g2],
+            'T':T,
+        }
+
 
     def make_corrected_obs(self, index, band=None, obsnum=None):
         """
@@ -635,6 +739,9 @@ class MOFStamps(MOF):
         )
 
     def get_convolved_gmix(self, index, band=0, obsnum=0, pars=None):
+        """
+        get the psf-convolved gmix for the specified object, band, obsnum
+        """
 
         gm0 = self.get_gmix(index, band=band, pars=pars)
 
@@ -643,6 +750,9 @@ class MOFStamps(MOF):
         return gm0.convolve(psf_gmix)
 
     def get_gmix(self, index, band=0, pars=None):
+        """
+        get the pre-psf gmix for the specified object, band, obsnum
+        """
         if pars is None:
             res=self.get_result()
             pars=res['pars']
