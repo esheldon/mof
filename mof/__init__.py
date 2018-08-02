@@ -1,5 +1,5 @@
-from . import mof
-from .mof import MOF, MOFStamps
+from . import moflib
+from .moflib import MOF, MOFStamps
 
 from . import priors
 

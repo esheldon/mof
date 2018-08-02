@@ -19,7 +19,7 @@ import meds
 import ngmix
 import time
 
-from . import mof
+from . import moflib
 
 class MultiBandMEDS(object):
     def __init__(self, mlist):
@@ -653,14 +653,14 @@ def test(ntrial=1, dim=2000, show=False):
                 for obs in obslist:
                     obs.set_psf(psf_obs)
 
-        prior=mof.get_mof_prior(list_of_obs, "bdf", rng)
-        mof_fitter=mof.MOFStamps(
+        prior=moflib.get_mof_prior(list_of_obs, "bdf", rng)
+        mof_fitter=moflib.MOFStamps(
             list_of_obs,
             "bdf",
             prior=prior,
         )
         band=2
-        guess=mof.get_stamp_guesses(list_of_obs, band, "bdf", rng)
+        guess=moflib.get_stamp_guesses(list_of_obs, band, "bdf", rng)
         mof_fitter.go(guess)
 
         if show:
