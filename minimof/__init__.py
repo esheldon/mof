@@ -12,4 +12,3 @@ from . import minitest
 from . import moftest
 
 from . import stamps
-from . import util
