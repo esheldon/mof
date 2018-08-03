@@ -411,7 +411,7 @@ class MEDSifier(object):
         # use the number of pixels in the seg map as the iso area
         for i in xrange(objs.size):
             w=np.where(seg == (i+1))
-            print(i,"found",w[0].size)
+            #print(i,"found",w[0].size)
             cat['isoarea_image'][i] = w[0].size
 
         cat['iso_radius'] = np.sqrt(cat['isoarea_image'].clip(min=1)/np.pi)

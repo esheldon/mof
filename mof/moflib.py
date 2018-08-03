@@ -1,10 +1,10 @@
 """
 assumes the psf is constant across the input larger image
 todo:
-    the real result is the full set of parameters and
-    covariance
+    need to deal with odd fits in the mof when subtracting, somehow
+    they are getting g >= 1
 
-    but need to unpack results for individual objects, get an s/n etc.
+    maybe it actually failed and we aren't detecting that?
 """
 from __future__ import print_function
 import numpy as np
@@ -112,15 +112,16 @@ class MOF(LMSimple):
         """
         return self.nobj
 
-    def make_corrected_obs(self, index, band=None, obsnum=None, recenter=True):
+    def make_corrected_obs(self, index=None, band=None, obsnum=None, recenter=True):
         """
         get observation(s) for the given object and band
         with all the neighbors subtracted from the image
 
         parameters
         ----------
-        index: number
-            The object index.
+        index: number, optional
+            The object index. If not sent, a list of all corrected
+            observations is returned
         band: number, optional
             The optional band.  If not sent, all bands and epochs are returned
             in a MultiBandObsList
@@ -129,12 +130,25 @@ class MOF(LMSimple):
             epoch/observation
         """
 
+        if index is None:
+            mbobs_list=[]
+            for index in xrange(self.nobj):
+                mbobs=self.make_corrected_obs(
+                    index=index,
+                    band=band,
+                    obsnum=obsnum,
+                    recenter=recenter,
+                )
+                mbobs_list.append(mbobs)
+            return mbobs_list
+
+
         if band is None:
             # get all bands and epochs
             output=MultiBandObsList()
             for band in range(self.nband):
                 obslist=self.make_corrected_obs(
-                    index,
+                    index=index,
                     band=band,
                     recenter=recenter,
                 )
@@ -149,7 +163,7 @@ class MOF(LMSimple):
             nepoch = len(self.obs[band])
             for obsnum in range(nepoch):
                 obs = self.make_corrected_obs(
-                    index,
+                    index=index,
                     band=band,
                     obsnum=obsnum,
                     recenter=recenter,
@@ -527,13 +541,16 @@ class MOFStamps(MOF):
         }
 
 
-    def make_corrected_obs(self, index, band=None, obsnum=None):
+    def make_corrected_obs(self, index=None, band=None, obsnum=None):
         """
         get observation(s) for the given object and band
         with all the neighbors subtracted from the image
 
         parameters
         ----------
+        index: number, optional
+            The object index. If not sent, a list of all corrected
+            observations is returned
         index: number
             The object index.
         band: number, optional
@@ -544,12 +561,23 @@ class MOFStamps(MOF):
             epoch/observation
         """
 
+        if index is None:
+            mbobs_list=[]
+            for index in xrange(self.nobj):
+                mbobs=self.make_corrected_obs(
+                    index=index,
+                    band=band,
+                    obsnum=obsnum,
+                )
+                mbobs_list.append(mbobs)
+            return mbobs_list
+
         if band is None:
             # get all bands and epochs
             output=MultiBandObsList()
             for band in range(self.nband):
                 obslist=self.make_corrected_obs(
-                    index,
+                    index=index,
                     band=band,
                 )
                 output.append(obslist)
@@ -564,7 +592,7 @@ class MOFStamps(MOF):
             nepoch = len(obslist) 
             for obsnum in range(nepoch):
                 obs = self.make_corrected_obs(
-                    index,
+                    index=index,
                     band=band,
                     obsnum=obsnum,
                 )
@@ -873,8 +901,8 @@ class MOFStamps(MOF):
                 for icut,obs in enumerate(band_obslist):
                     nbr_data = self._get_nbr_data(obs, iobj, band)
                     obs.meta['nbr_data']=nbr_data
-                    print('    obj %d band %d cut %d found %d '
-                          'nbrs' % (iobj,band,icut,len(nbr_data)))
+                    #print('    obj %d band %d cut %d found %d '
+                    #      'nbrs' % (iobj,band,icut,len(nbr_data)))
 
     def _get_nbr_data(self, obs, iobj, band):
         """
