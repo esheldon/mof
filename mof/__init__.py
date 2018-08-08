@@ -7,3 +7,4 @@ from . import priors
 from . import moftest
 
 from . import stamps
+from . import fofs
