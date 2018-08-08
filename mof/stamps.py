@@ -21,6 +21,26 @@ import time
 
 from . import moflib
 
+DEFAULT_SX_CONFIG = {
+    # in sky sigma
+    #DETECT_THRESH
+    'detect_thresh': 1.6,
+
+    # Minimum contrast parameter for deblending
+    #DEBLEND_MINCONT
+    'deblend_cont': 0.005,
+
+    # minimum number of pixels above threshold
+    #DETECT_MINAREA: 6
+    'minarea': 6,
+}
+
+DEFAULT_MEDS_CONFIG = {
+    'rad_min': 4,
+    'min_box_size': 16,
+    'box_padding': 2,
+}
+
 class MultiBandMEDS(object):
     def __init__(self, mlist):
         self.mlist=mlist
@@ -226,7 +246,7 @@ class MEDSInterface(meds.MEDS):
 
 
 class MEDSifier(object):
-    def __init__(self, datalist):
+    def __init__(self, datalist, sx_config=None, meds_config=None):
         """
         very simple MEDS maker for images. Assumes the images
         line up, have constant noise, are sky subtracted, 
@@ -243,6 +263,8 @@ class MEDSifier(object):
                 scale
         """
         self.datalist=datalist
+        self._set_sx_config(sx_config)
+        self._set_meds_config(meds_config)
 
         self._set_detim()
         self._run_sep()
@@ -302,14 +324,20 @@ class MEDSifier(object):
 
     def _run_sep(self):
         import sep
-        THRESH=1.2 # in sky sigma
-        #THRESH=1.5 # in sky sigma
+        #THRESH=1.2 # in sky sigma
+        #DETECT_THRESH=1.6 # in sky sigma
+        #DEBLEND_MINCONT=0.005
+        #DETECT_MINAREA  = 6 # minimum number of pixels above threshold
         objs, seg = sep.extract(
             self.detim,
-            THRESH,
+            self.detect_thresh,
             err=self.detnoise,
-            deblend_cont=0.0001,
             segmentation_map=True,
+
+            #deblend_cont=0.0001,
+            #deblend_cont=DEBLEND_MINCONT,
+            #minarea=DETECT_MINAREA,
+            **self.sx_config
         )
 
         flux_auto=np.zeros(objs.size)-9999.0
@@ -416,18 +444,21 @@ class MEDSifier(object):
 
         cat['iso_radius'] = np.sqrt(cat['isoarea_image'].clip(min=1)/np.pi)
 
-        RAD_MIN=4 # for box size calculations
-        BOX_PADDING=2
-        MIN_BOX_SIZE=16
-        box_size = (2*cat['iso_radius'].clip(min=RAD_MIN) + BOX_PADDING).astype('i4')
-        box_size = box_size.clip(min=MIN_BOX_SIZE,out=box_size)
+        rad_min=self.meds_config['rad_min'] # for box size calculations
+        box_padding=self.meds_config['box_padding']
+        min_box_size=self.meds_config['min_box_size']
+
+        box_size = (2*cat['iso_radius'].clip(min=rad_min) + box_padding).astype('i4')
+        box_size.clip(min=min_box_size,out=box_size)
         wb,=np.where( (box_size % 2) != 0 )
         if wb.size > 0:
             box_size[wb] += 1
         half_box_size = box_size//2
 
         maxrow,maxcol=self.detim.shape
-        cat['box_size'] = 2*cat['iso_radius'] + BOX_PADDING
+
+        #cat['box_size'] = 2*cat['iso_radius'] + BOX_PADDING
+        cat['box_size'] = box_size
 
         cat['orig_row'][:,0] = cat['y']
         cat['orig_col'][:,0] = cat['x']
@@ -457,6 +488,26 @@ class MEDSifier(object):
         self.seg=seg
         self.bmask=np.zeros(seg.shape, dtype='i4')
         self.cat=cat
+
+    def _set_sx_config(self, config):
+        sx_config={}
+        sx_config.update(DEFAULT_SX_CONFIG)
+
+        if config is not None:
+            sx_config.update(config)
+
+        self.detect_thresh = sx_config.pop('detect_thresh')
+        self.sx_config=sx_config
+
+    def _set_meds_config(self, config):
+        meds_config={}
+        meds_config.update(DEFAULT_MEDS_CONFIG)
+
+        if config is not None:
+            meds_config.update(config)
+
+        self.meds_config=meds_config
+
 
 def fitpsf(psf_obs):
     am=ngmix.admom.run_admom(psf_obs, 4.0)
