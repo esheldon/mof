@@ -618,6 +618,7 @@ class MOFStamps(MOF):
             output = Observation(
                 image,
                 weight=ref_obs.weight.copy(),
+                bmask=ref_obs.bmask.copy(),
                 jacobian=jacob,
                 psf=psf_obs,
             )

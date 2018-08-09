@@ -135,7 +135,7 @@ class MEDSInterface(meds.MEDS):
         read_im = im[orow_box[0]:orow_box[1],
                      ocol_box[0]:ocol_box[1]]
 
-        subim = np.zeros( (bsize, bsize) )
+        subim = np.zeros( (bsize, bsize), dtype=im.dtype)
         subim += DEFAULT_IMAGE_VALUES[type]
 
         subim[row_box[0]:row_box[1],
