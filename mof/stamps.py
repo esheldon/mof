@@ -41,6 +41,15 @@ DEFAULT_MEDS_CONFIG = {
     'box_padding': 2,
 }
 
+BMASK_EDGE=2**30
+DEFAULT_IMAGE_VALUES = {
+    'image':0.0,
+    'weight':0.0,
+    'seg':0,
+    'bmask':BMASK_EDGE,
+}
+
+
 class MultiBandMEDS(object):
     def __init__(self, mlist):
         self.mlist=mlist
@@ -111,17 +120,73 @@ class MEDSInterface(meds.MEDS):
             raise ValueError("bad cutout type: '%s'" % type)
 
         im=self._image_data[type]
+        dims = im.shape
 
         c=self._cat
-        srow=c['orig_start_row'][iobj,icutout]
-        scol=c['orig_start_col'][iobj,icutout]
+        orow=c['orig_start_row'][iobj,icutout]
+        ocol=c['orig_start_col'][iobj,icutout]
         erow=c['orig_end_row'][iobj,icutout]
         ecol=c['orig_end_col'][iobj,icutout]
+        bsize=c['box_size'][iobj]
 
-        return im[
-            srow:erow,
-            scol:ecol,
-        ].copy()
+        orow_box, row_box = self._get_clipped_boxes(dims[0],orow,bsize)
+        ocol_box, col_box = self._get_clipped_boxes(dims[1],ocol,bsize)
+
+        read_im = im[orow_box[0]:orow_box[1],
+                     ocol_box[0]:ocol_box[1]]
+
+        subim = np.zeros( (bsize, bsize) )
+        subim += DEFAULT_IMAGE_VALUES[type]
+
+        subim[row_box[0]:row_box[1],
+              col_box[0]:col_box[1]] = read_im
+
+        return subim
+
+    def _get_clipped_boxes(self, dim, start, bsize):
+        """
+        get clipped boxes for slicing
+
+        If the box size goes outside the dimensions,
+        trim them back
+
+        parameters
+        ----------
+        dim: int
+            Dimension of this axis
+        start: int
+            Starting position in the image for this axis
+        bsize: int
+            Size of box
+
+        returns
+        -------
+        obox, box
+
+        obox: [start,end]
+            Start and end slice ranges in the original image
+        box: [start,end]
+            Start and end slice ranges in the output image
+        """
+        # slice range in the original image
+        obox = [start, start+bsize]
+
+        # slice range in the sub image into which we will copy
+        box = [0, bsize]
+
+        # rows
+        if obox[0] < 0:
+            obox[0] = 0
+            box[0] = 0 - start
+
+        im_max = dim
+        diff= im_max - obox[1]
+        if diff < 0:
+            obox[1] = im_max
+            box[1] = box[1] + diff
+
+        return obox, box
+
 
     def get_obslist(self, iobj, weight_type='weight'):
         """
@@ -446,10 +511,15 @@ class MEDSifier(object):
 
         rad_min=self.meds_config['rad_min'] # for box size calculations
         box_padding=self.meds_config['box_padding']
-        min_box_size=self.meds_config['min_box_size']
+
+        mconf = self.meds_config
 
         box_size = (2*cat['iso_radius'].clip(min=rad_min) + box_padding).astype('i4')
-        box_size.clip(min=min_box_size,out=box_size)
+        box_size.clip(
+            min=mconf['min_box_size'],
+            max=mconf['max_box_size'],
+            out=box_size,
+        )
         wb,=np.where( (box_size % 2) != 0 )
         if wb.size > 0:
             box_size[wb] += 1
@@ -457,7 +527,6 @@ class MEDSifier(object):
 
         maxrow,maxcol=self.detim.shape
 
-        #cat['box_size'] = 2*cat['iso_radius'] + BOX_PADDING
         cat['box_size'] = box_size
 
         cat['orig_row'][:,0] = cat['y']
