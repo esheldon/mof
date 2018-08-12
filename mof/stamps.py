@@ -565,6 +565,9 @@ class MEDSifier(object):
         if config is not None:
             sx_config.update(config)
 
+        if 'filter_kernel' in sx_config:
+            sx_config['filter_kernel'] = np.array(sx_config['filter_kernel'])
+
         self.detect_thresh = sx_config.pop('detect_thresh')
         self.sx_config=sx_config
 
