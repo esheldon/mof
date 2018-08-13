@@ -1148,10 +1148,13 @@ def get_stamp_guesses(list_of_obs, detband, model, rng):
     T guess is gotten from detband
     """
 
-    assert model=="bdf"
     nband=len(list_of_obs[0])
 
-    npars_per=6+nband
+    if model=='bdf':
+        npars_per=6+nband
+    else:
+        npars_per=5+nband
+
     nobj=len(list_of_obs)
 
     npars_tot = nobj*npars_per
@@ -1181,7 +1184,11 @@ def get_stamp_guesses(list_of_obs, detband, model, rng):
         guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
         # arbitrary guess for fracdev
-        guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+        if model=='bdf':
+            guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+            flux_start=6
+        else:
+            flux_start=5
 
         for band in xrange(nband):
             obslist=mbo[band]
@@ -1192,7 +1199,7 @@ def get_stamp_guesses(list_of_obs, detband, model, rng):
             flux=meta['flux']*scale**2
             flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
-            guess[beg+6+band] = flux_guess
+            guess[beg+flux_start+band] = flux_guess
 
     return guess
 
@@ -1257,7 +1264,6 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
     """
     Not generic, need to let this be configurable
     """
-    assert model=="bdf"
 
     nband=len(list_of_obs[0])
 
@@ -1279,19 +1285,26 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
         rng=rng,
     )
 
-    fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
 
     F_prior = ngmix.priors.TwoSidedErf(
         -100.0, 1.0, 1.0e9, 1.0e8,
         rng=rng,
     )
 
-    return ngmix.joint_prior.PriorBDFSep(
-        cen_prior,
-        g_prior,
-        T_prior,
-        fracdev_prior,
-        [F_prior]*nband,
-    )
-
+    if model=='bdf':
+        fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
+        return ngmix.joint_prior.PriorBDFSep(
+            cen_prior,
+            g_prior,
+            T_prior,
+            fracdev_prior,
+            [F_prior]*nband,
+        )
+    else:
+        return ngmix.joint_prior.PriorSimpleSep(
+            cen_prior,
+            g_prior,
+            T_prior,
+            [F_prior]*nband,
+        )
 
