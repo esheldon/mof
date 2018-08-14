@@ -311,7 +311,12 @@ class MEDSInterface(meds.MEDS):
 
 
 class MEDSifier(object):
-    def __init__(self, datalist, sx_config=None, meds_config=None):
+    def __init__(self,
+                 datalist,
+                 cat=None,
+                 seg=None,
+                 sx_config=None,
+                 meds_config=None):
         """
         very simple MEDS maker for images. Assumes the images
         line up, have constant noise, are sky subtracted, 
@@ -331,8 +336,15 @@ class MEDSifier(object):
         self._set_sx_config(sx_config)
         self._set_meds_config(meds_config)
 
-        self._set_detim()
-        self._run_sep()
+        if cat is not None:
+            assert seg is not None,'if sending a cat also send seg'
+            print('using input cat and seg')
+            self.cat=cat.copy()
+            self.seg=seg.copy()
+            self.bmask=np.zeros(seg.shape, dtype='i4')
+        else:
+            self._set_detim()
+            self._run_sep()
 
     def get_multiband_meds(self):
         """

@@ -27,7 +27,7 @@ class MEDSNbrs(object):
 
     """
 
-    def __init__(self, meds_list, conf,cat=None):
+    def __init__(self, meds_list, conf, cat=None):
 
         if isinstance(meds_list, meds.MEDS):
             meds_list=[meds_list]
