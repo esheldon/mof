@@ -605,23 +605,8 @@ class MOFStamps(MOF):
 
             image =self.make_corrected_image(index, band=band, obsnum=obsnum)
 
-            po=ref_obs.psf
-            psf_obs=Observation(
-                po.image.copy(),
-                weight=po.weight.copy(),
-                jacobian=po.jacobian.copy(),
-            )
-            psf_obs.gmix =  po.gmix
-
-            jacob = ref_obs.jacobian.copy()
-
-            output = Observation(
-                image,
-                weight=ref_obs.weight.copy(),
-                bmask=ref_obs.bmask.copy(),
-                jacobian=jacob,
-                psf=psf_obs,
-            )
+            output = ref_obs.copy()
+            output.image = image
 
         return output
 
