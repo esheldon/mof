@@ -246,6 +246,8 @@ class MEDSInterface(meds.MEDS):
 
         if weight_type=='uberseg':
             wt=self.get_uberseg(iobj, icutout)
+        elif weight_type=='cweight':
+            wt=self.get_cweight_cutout(iobj, icutout, restrict_to_seg=True)
         elif weight_type=='weight':
             wt=self.get_cutout(iobj, icutout, type='weight')
         else:
@@ -282,13 +284,20 @@ class MEDSInterface(meds.MEDS):
             orig_end_row=c['orig_end_row'][iobj, icutout],
             orig_end_col=c['orig_end_col'][iobj, icutout],
         )
-        return ngmix.Observation(
+        obs = ngmix.Observation(
             im,
             weight=wt,
             bmask=bmask,
             meta=meta,
             jacobian=jacobian,
         )
+        if False:
+            import images
+            images.view_mosaic( [obs.image, obs.weight] )
+            if 'q'==raw_input('hit a key (q to quit): '):
+                stop
+
+        return obs
         
     @property
     def size(self):
