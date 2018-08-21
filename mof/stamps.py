@@ -21,6 +21,8 @@ import time
 
 from . import moflib
 
+FWHM_FAC = 2*np.sqrt(2*np.log(2))
+
 DEFAULT_SX_CONFIG = {
     # in sky sigma
     #DETECT_THRESH
@@ -49,6 +51,12 @@ DEFAULT_IMAGE_VALUES = {
     'bmask':BMASK_EDGE,
 }
 
+ALLOWED_BOX_SIZES = [
+    2,3,4,6,8,12,16,24,32,48,
+    64,96,128,192,256,
+    384,512,768,1024,1536,
+    2048,3072,4096,6144
+]
 
 class MultiBandMEDS(object):
     def __init__(self, mlist):
@@ -293,7 +301,7 @@ class MEDSInterface(meds.MEDS):
         )
         if False:
             import images
-            images.view_mosaic( [obs.image, obs.weight] )
+            images.view_mosaic( [obs.image, obs.weight], dims=[800,400] )
             if 'q'==raw_input('hit a key (q to quit): '):
                 stop
 
@@ -530,20 +538,9 @@ class MEDSifier(object):
 
         cat['iso_radius'] = np.sqrt(cat['isoarea_image'].clip(min=1)/np.pi)
 
-        rad_min=self.meds_config['rad_min'] # for box size calculations
-        box_padding=self.meds_config['box_padding']
 
-        mconf = self.meds_config
+        box_size=self._get_box_sizes(cat)
 
-        box_size = (2*cat['iso_radius'].clip(min=rad_min) + box_padding).astype('i4')
-        box_size.clip(
-            min=mconf['min_box_size'],
-            max=mconf['max_box_size'],
-            out=box_size,
-        )
-        wb,=np.where( (box_size % 2) != 0 )
-        if wb.size > 0:
-            box_size[wb] += 1
         half_box_size = box_size//2
 
         maxrow,maxcol=self.detim.shape
@@ -578,6 +575,70 @@ class MEDSifier(object):
         self.seg=seg
         self.bmask=np.zeros(seg.shape, dtype='i4')
         self.cat=cat
+
+    def _get_box_sizes(self, cat):
+
+        mconf = self.meds_config
+
+        box_type=mconf['box_type']
+        if box_type=='sigma_size':
+            sigma_size = self._get_sigma_size(cat)
+            row_size = cat['ymax'] - cat['ymin'] + 1
+            col_size = cat['xmax'] - cat['xmin'] + 1
+
+            # get max of all three
+            box_size = np.vstack((col_size,row_size,sigma_size)).max(axis=0)
+
+        elif box_type=='iso_radius':
+            rad_min = mconf['rad_min'] # for box size calculations
+
+            box_padding=mconf['box_padding']
+            box_size = (2*cat['iso_radius'].clip(min=rad_min) 
+                        + box_padding).astype('i4')
+        else:
+            raise ValueError('bad box type: "%s"' % box_type)
+
+        box_size.clip(
+            min=mconf['min_box_size'],
+            max=mconf['max_box_size'],
+            out=box_size,
+        )
+
+        #wb,=np.where( (box_size % 2) != 0 )
+        #if wb.size > 0:
+        #    box_size[wb] += 1
+
+        # now put in fft sizes
+        bins = [0]
+        bins.extend([sze for sze in ALLOWED_BOX_SIZES
+                     if sze >= mconf['min_box_size']
+                     and sze <= mconf['max_box_size']])
+
+        if bins[-1] != mconf['max_box_size']:
+            bins.append(mconf['max_box_size'])
+
+        bin_inds = np.digitize(box_size,bins,right=True)
+        bins = np.array(bins)
+
+        box_sizes = bins[bin_inds]
+        print('box sizes:',box_sizes)
+        print('minmax:',box_sizes.min(), box_sizes.max())
+        return box_sizes
+
+    def _get_sigma_size(self, cat):
+        """
+        "sigma" size, based on flux radius and ellipticity
+        """
+        mconf = self.meds_config
+
+        ellipticity = 1.0 - cat['b']/cat['a']
+        sigma = cat['flux_radius']*2.0/FWHM_FAC
+        drad = sigma*mconf['sigma_fac']
+        drad = drad*(1.0 + ellipticity)
+        drad = np.ceil(drad)
+        sigma_size = 2*drad.astype('i4') # sigma size is twice the radius
+
+        return sigma_size
 
     def _set_sx_config(self, config):
         sx_config={}
