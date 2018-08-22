@@ -591,10 +591,14 @@ class MEDSifier(object):
 
         elif box_type=='iso_radius':
             rad_min = mconf['rad_min'] # for box size calculations
+            rad_fac = mconf['rad_fac']
 
             box_padding=mconf['box_padding']
-            box_size = (2*cat['iso_radius'].clip(min=rad_min) 
-                        + box_padding).astype('i4')
+            rad = cat['iso_radius'].clip(min=rad_min)
+
+            box_rad = rad_fac*rad
+
+            box_size = (2*box_rad + box_padding).astype('i4')
         else:
             raise ValueError('bad box type: "%s"' % box_type)
 
@@ -603,10 +607,6 @@ class MEDSifier(object):
             max=mconf['max_box_size'],
             out=box_size,
         )
-
-        #wb,=np.where( (box_size % 2) != 0 )
-        #if wb.size > 0:
-        #    box_size[wb] += 1
 
         # now put in fft sizes
         bins = [0]
@@ -623,6 +623,7 @@ class MEDSifier(object):
         box_sizes = bins[bin_inds]
         print('box sizes:',box_sizes)
         print('minmax:',box_sizes.min(), box_sizes.max())
+
         return box_sizes
 
     def _get_sigma_size(self, cat):
