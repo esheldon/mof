@@ -5,8 +5,7 @@ import time
 import yaml
 import esutil as eu
 import numpy as np
-import minimof
-from minimof import mof
+import mof
 import ngmix
 import sep
 import fitsio
@@ -194,7 +193,7 @@ def main():
 
     detband=2
 
-    sim=minimof.moftest.Sim(config, args.seed)
+    sim=mof.moftest.Sim(config, args.seed)
     fitrng = np.random.RandomState(sim.rng.randint(0,2**15))
     np.random.seed(fitrng.randint(0,2**15))
 
@@ -246,8 +245,8 @@ def main():
 
                 list_of_obs.append(mbo)
 
-            prior=mof.get_mof_stamps_prior(list_of_obs, config['fit_model'], fitrng)
-            fitter=minimof.mof.MOFStamps(
+            prior=mof.moflib.get_mof_stamps_prior(list_of_obs, config['fit_model'], fitrng)
+            fitter=mof.MOFStamps(
                 list_of_obs,
                 config['fit_model'],
                 prior=prior,
@@ -255,7 +254,7 @@ def main():
 
 
         else:
-            prior = mof.get_mof_full_image_prior(
+            prior = mof.moflib.get_mof_full_image_prior(
                 objects,
                 nband,
                 sim.obs[0][0].jacobian,
@@ -263,7 +262,7 @@ def main():
                 fitrng,
             )
 
-            fitter=minimof.MOF(
+            fitter=mof.MOF(
                 sim.obs,
                 config['fit_model'],
                 nobj,
@@ -272,11 +271,11 @@ def main():
 
         for itry in range(ntry):
             if args.stamps:
-                guess = mof.get_stamp_guesses(
+                guess = mof.moflib.get_stamp_guesses(
                     list_of_obs, detband, config['fit_model'], fitrng,
                 )
             else:
-                guess = mof.get_full_image_guesses(
+                guess = mof.moflib.get_full_image_guesses(
                     objects, nband, sim.obs[0][0].jacobian,
                     config['fit_model'], fitrng,
                 )

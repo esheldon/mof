@@ -11,6 +11,7 @@ TODO:
     make import of this module optional to avoid MEDS dependency
 """
 from __future__ import print_function
+import logging
 import numpy as np
 from numpy import pi
 import esutil as eu
@@ -20,6 +21,8 @@ import ngmix
 import time
 
 from . import moflib
+
+logger = logging.getLogger(__name__)
 
 FWHM_FAC = 2*np.sqrt(2*np.log(2))
 
@@ -355,7 +358,7 @@ class MEDSifier(object):
 
         if cat is not None:
             assert seg is not None,'if sending a cat also send seg'
-            print('using input cat and seg')
+            logger.debug('using input cat and seg')
             self.cat=cat.copy()
             self.seg=seg.copy()
             self.bmask=np.zeros(seg.shape, dtype='i4')
@@ -533,7 +536,6 @@ class MEDSifier(object):
         # use the number of pixels in the seg map as the iso area
         for i in xrange(objs.size):
             w=np.where(seg == (i+1))
-            #print(i,"found",w[0].size)
             cat['isoarea_image'][i] = w[0].size
 
         cat['iso_radius'] = np.sqrt(cat['isoarea_image'].clip(min=1)/np.pi)
@@ -621,8 +623,8 @@ class MEDSifier(object):
         bins = np.array(bins)
 
         box_sizes = bins[bin_inds]
-        print('box sizes:',box_sizes)
-        print('minmax:',box_sizes.min(), box_sizes.max())
+        logger.debug('box sizes: %s' % box_sizes)
+        logger.debug('minmax: %s %s' % (box_sizes.min(), box_sizes.max()))
 
         return box_sizes
 

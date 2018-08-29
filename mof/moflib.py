@@ -1082,14 +1082,17 @@ class GMixModelMulti(GMix):
         return image
     '''
 
-def get_full_image_guesses(objects, nband, jacobian, model, rng):
+def get_full_image_guesses(objects, nband, jacobian, model, rng, Tguess=None):
 
-    assert model=="bdf"
+    if model=='bdf':
+        npars_per=6+nband
+    else:
+        npars_per=5+nband
 
     scale=jacobian.get_scale()
-    pos_range = scale*0.1
+    #pos_range = scale*0.1
+    pos_range = scale
 
-    npars_per=6+nband
     nobj=len(objects)
 
     npars_tot = nobj*npars_per
@@ -1101,7 +1104,11 @@ def get_full_image_guesses(objects, nband, jacobian, model, rng):
 
         v, u = jacobian(row, col)
 
-        T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+        if Tguess is not None:
+            T=Tguess
+        else:
+            T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+
         flux=scale**2 * objects['flux'][i]
 
         beg=i*npars_per
@@ -1116,11 +1123,19 @@ def get_full_image_guesses(objects, nband, jacobian, model, rng):
 
         guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
+
+        if model=='bdf':
+            # arbitrary guess for fracdev
+            guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+            flux_start=6
+        else:
+            flux_start=5
         # arbitrary guess for fracdev
-        guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+        #guess[beg+5] = rng.uniform(low=0.4,high=0.6)
 
         for band in xrange(nband):
-            guess[beg+6+band] = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+            flux_guess = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+            guess[beg+flux_start+band] = flux_guess
 
     return guess
 
@@ -1199,8 +1214,6 @@ def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
     centers
     """
 
-    assert model=="bdf"
-
     nobj=len(objects)
 
     cen_priors=[]
@@ -1220,29 +1233,48 @@ def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
         cen_priors.append(p)
 
     g_prior=ngmix.priors.GPriorBA(
-        0.2,
+        0.3,
         rng=rng,
     )
+
     T_prior = ngmix.priors.TwoSidedErf(
         -1.0, 0.1, 1.0e6, 1.0e5,
         rng=rng,
     )
 
-    fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
-    #fracdev_prior = ngmix.priors.Normal(0.0, 100, rng=rng)
-
     F_prior = ngmix.priors.TwoSidedErf(
         -100.0, 1.0, 1.0e9, 1.0e8,
         rng=rng,
     )
-
-    return priors.PriorBDFSepMulti(
-        cen_priors,
-        g_prior,
-        T_prior,
-        fracdev_prior,
-        [F_prior]*nband,
+    """
+    T_prior = ngmix.priors.LogNormal(
+        0.1, 0.1,
+        rng=rng,
     )
+
+    F_prior = ngmix.priors.LogNormal(
+        20.0, 20.0, 
+        rng=rng,
+    )
+    """
+
+    if model=='bdf':
+        fracdev_prior = ngmix.priors.Normal(0.5, 0.1, rng=rng)
+
+        return priors.PriorBDFSepMulti(
+            cen_priors,
+            g_prior,
+            T_prior,
+            fracdev_prior,
+            [F_prior]*nband,
+        )
+    else:
+        return priors.PriorSimpleSepMulti(
+            cen_priors,
+            g_prior,
+            T_prior,
+            [F_prior]*nband,
+        )
 
 
 def get_mof_stamps_prior(list_of_obs, model, rng):
