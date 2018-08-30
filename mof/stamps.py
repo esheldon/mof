@@ -522,7 +522,6 @@ class MEDSifier(object):
         cat['id'] = np.arange(cat.size)
         cat['number'] = np.arange(1,cat.size+1)
         cat['ncutout'] = 1
-        cat['flux_auto'] = kron_radius
         cat['flux_auto'] = flux_auto
         cat['fluxerr_auto'] = fluxerr_auto
         cat['flux_radius'] = flux_radius

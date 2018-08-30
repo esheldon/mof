@@ -1090,8 +1090,8 @@ def get_full_image_guesses(objects, nband, jacobian, model, rng, Tguess=None):
         npars_per=5+nband
 
     scale=jacobian.get_scale()
-    #pos_range = scale*0.1
-    pos_range = scale
+    pos_range = scale*0.1
+    #pos_range = scale
 
     nobj=len(objects)
 
@@ -1233,7 +1233,7 @@ def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
         cen_priors.append(p)
 
     g_prior=ngmix.priors.GPriorBA(
-        0.3,
+        0.2,
         rng=rng,
     )
 
