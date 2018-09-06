@@ -261,6 +261,8 @@ class MEDSInterface(meds.MEDS):
             wt=self.get_cweight_cutout(iobj, icutout, restrict_to_seg=True)
         elif weight_type=='weight':
             wt=self.get_cutout(iobj, icutout, type='weight')
+        elif weight_type=='cseg':
+            wt=self.get_cseg_weight(iobj, icutout)
         else:
             raise ValueError("bad weight type '%s'" % weight_type)
 
@@ -309,7 +311,49 @@ class MEDSInterface(meds.MEDS):
                 stop
 
         return obs
+
+    def get_cseg_weight(self, iobj, icutout):
+        """
+        get the largest circular mask (weight > 0) that does not
+        interesect any other objects seg map. If there are no other
+        objects in the scene, the regular weight map is returned
+        """
+        seg = self.get_cutout(iobj, icutout, type='seg')
+        weight = self.get_cutout(iobj, icutout, type='weight')
+        number = self['number'][iobj]
+
+        wother=np.where( (seg != 0) & (seg != number ) )
+        if wother[0].size == 0:
+            # no other objects in the stamp
+            return weight
+
+        #row,col = (np.array(weight.shape)-1.0)/2.0
+        row = self['cutout_row'][iobj, icutout]
+        col = self['cutout_col'][iobj, icutout]
+
+        rows, cols = np.mgrid[
+            0:weight.shape[0],
+            0:weight.shape[1],
+        ]
         
+        rows = rows.astype('f8')
+        cols = cols.astype('f8')
+
+        rows -= row
+        cols -= col
+
+        r2 = rows**2 + cols**2
+
+        minr2 = r2[wother].min()
+
+        # now set the weight to zero for radii larger than that
+        wkeep = np.where(r2 < minr2)
+        new_weight = np.zeros(weight.shape)
+        if wkeep[0].size > 0:
+            new_weight[wkeep] = weight[wkeep]
+
+        return new_weight
+
     @property
     def size(self):
         return self._cat.size
