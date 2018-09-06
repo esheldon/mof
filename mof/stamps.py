@@ -263,6 +263,8 @@ class MEDSInterface(meds.MEDS):
             wt=self.get_cutout(iobj, icutout, type='weight')
         elif weight_type=='cseg':
             wt=self.get_cseg_weight(iobj, icutout)
+        elif weight_type=='cseg-canonical':
+            wt=self.get_cseg_weight(iobj, icutout, use_canonical_cen=True)
         else:
             raise ValueError("bad weight type '%s'" % weight_type)
 
@@ -312,7 +314,7 @@ class MEDSInterface(meds.MEDS):
 
         return obs
 
-    def get_cseg_weight(self, iobj, icutout):
+    def get_cseg_weight(self, iobj, icutout, use_canonical_cen=False):
         """
         get the largest circular mask (weight > 0) that does not
         interesect any other objects seg map. If there are no other
@@ -327,9 +329,11 @@ class MEDSInterface(meds.MEDS):
             # no other objects in the stamp
             return weight
 
-        #row,col = (np.array(weight.shape)-1.0)/2.0
-        row = self['cutout_row'][iobj, icutout]
-        col = self['cutout_col'][iobj, icutout]
+        if use_canonical_cen:
+            row,col = (np.array(weight.shape)-1.0)/2.0
+        else:
+            row = self['cutout_row'][iobj, icutout]
+            col = self['cutout_col'][iobj, icutout]
 
         rows, cols = np.mgrid[
             0:weight.shape[0],
