@@ -8,6 +8,7 @@ todo:
 """
 from __future__ import print_function
 import numpy as np
+from numpy import dot
 import ngmix
 from ngmix.gmix import GMix, GMixModel
 from ngmix.fitting import LMSimple
@@ -447,6 +448,71 @@ class MOFStamps(MOF):
             self._make_result_list()
 
         return self._result_list
+
+    def get_result_averaged_shapes(self):
+        """
+        not doing anything smart with the rest
+        of the parameters yet, just copying first
+        object
+        """
+        res0=self._get_object_result(0)
+        if self.nobj==1:
+            return res0
+
+        res=self.get_result()
+
+        pars=res['pars']
+        pcov=res['pars_cov']
+
+        ng = self.nobj*2
+
+        # do separately for now
+        g1 = np.zeros(self.nobj)
+        g1cov = np.zeros( (self.nobj, self.nobj) )
+        g2 = np.zeros(self.nobj)
+        g2cov = np.zeros( (self.nobj, self.nobj) )
+
+        nper=self.npars_per
+        for i in xrange(self.nobj):
+
+            ig1p = i*nper + 2
+            ig2p = i*nper + 2 + 1
+
+            g1[i] = pars[ig1p]
+            g2[i] = pars[ig2p]
+
+            for j in xrange(self.nobj):
+
+                jg1p = j*nper + 2
+                jg2p = j*nper + 2 + 1
+
+                g1cov[i, j] = pcov[ig1p, jg1p]
+                g2cov[i, j] = pcov[ig2p, jg2p]
+
+        g1cov_inv = np.linalg.inv(g1cov)
+        g2cov_inv = np.linalg.inv(g2cov)
+        gones = np.ones(g1.size)
+
+        g1var = 1/g1cov_inv.sum()
+        g2var = 1/g2cov_inv.sum()
+        g1avg = dot(gones, dot(g1cov_inv, g1))*g1var
+        g2avg = dot(gones, dot(g2cov_inv, g2))*g2var
+
+
+        res0['g'] = g1avg, g2avg
+        res0['g_cov'] = np.diag([g1var, g2var])
+
+        """
+        print('g1')
+        print(g1)
+        print(g1avg)
+        print('g2')
+        print(g2)
+        print(g2avg)
+        print()
+        """
+
+        return res0
 
     def _make_result_list(self):
         """
