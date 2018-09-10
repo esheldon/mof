@@ -249,49 +249,6 @@ class MOF(LMSimple):
         obs = self.obs[band][obsnum]
         return gm.make_image(obs.image.shape, jacobian=obs.jacobian)
 
-
-    def get_object_pars(self, pars_in, iobj):
-        """
-        extract parameters for the given object
-        """
-        nper=self.npars_per
-        ibeg = iobj*self.npars_per
-        iend = (iobj+1)*self.npars_per
-
-        return pars_in[ibeg:iend].copy()
-
-    def get_object_cov(self, cov_in, iobj):
-        """
-        extract covariance for the given object
-        """
-        nper=self.npars_per
-        ibeg = iobj*self.npars_per
-        iend = (iobj+1)*self.npars_per
-
-        return cov_in[ibeg:iend, ibeg:iend].copy()
-
-
-    def get_object_band_pars(self, pars_in, iobj, band):
-        nbper=self.nband_pars_per
-
-        pars=np.zeros(nbper)
-
-        # either i*6 or i*7
-        beg=0
-        # either 5 or 6
-        end=0+nbper-1
-
-        ibeg = iobj*self.npars_per
-        iend = ibeg+nbper-1
-
-        pars[beg:end] = pars_in[ibeg:iend]
-
-        # now copy the flux
-        pars[end] = pars_in[iend+band]
-
-        return pars
-
-
     def get_band_pars(self, pars_in, band):
         """
         Get linear pars for the specified band
@@ -364,6 +321,153 @@ class MOF(LMSimple):
         components
         """
         return GMixModelMulti(band_pars, self.model)
+
+
+    def get_object_pars(self, pars_in, iobj):
+        """
+        extract parameters for the given object
+        """
+        nper=self.npars_per
+        ibeg = iobj*self.npars_per
+        iend = (iobj+1)*self.npars_per
+
+        return pars_in[ibeg:iend].copy()
+
+    def get_object_cov(self, cov_in, iobj):
+        """
+        extract covariance for the given object
+        """
+        nper=self.npars_per
+        ibeg = iobj*self.npars_per
+        iend = (iobj+1)*self.npars_per
+
+        return cov_in[ibeg:iend, ibeg:iend].copy()
+
+    def get_object_psf_stats(self, *args, **kw):
+        """
+        we have a single psf for full fitter so this needs to be cached only once
+        """
+        if not hasattr(self,'_psf_stats'):
+            g1sum=0.0
+            g2sum=0.0
+            Tsum=0.0
+            wsum=0.0
+
+            for obslist in self.obs:
+                for obs in obslist:
+                    twsum=obs.weight.sum()
+                    wsum += twsum
+
+                    tg1, tg2, tT = obs.psf.gmix.get_g1g2T()
+
+                    g1sum += tg1*twsum
+                    g2sum += tg2*twsum
+                    Tsum += tT*twsum
+
+            g1 = g1sum/wsum
+            g2 = g2sum/wsum
+            T = Tsum/wsum
+
+            self._psf_stats = {
+                'g':[g1,g2],
+                'T':T,
+            }
+
+        stats={}
+        stats.update(self._psf_stats)
+        return stats
+
+    def get_result_list(self):
+        """
+        get results split up for each object
+        """
+        if not hasattr(self,'_result_list'):
+            self._make_result_list()
+
+        return self._result_list
+
+    def _make_result_list(self):
+        """
+        get fit statistics for each object separately
+        """
+        reslist=[]
+        for i in xrange(self.nobj):
+            res=self.get_object_result(i)
+            reslist.append(res)
+
+        self._result_list = reslist
+
+    def get_object_result(self, i):
+        """
+        get a result dict for a single object
+        """
+        pars=self._result['pars']
+        pars_cov=self._result['pars_cov']
+
+        pres=self.get_object_psf_stats(i)
+
+        res={}
+
+        res['nband'] = self.nband
+        res['psf_g'] = pres['g']
+        res['psf_T'] = pres['T']
+
+        res['nfev']     = self._result['nfev']
+        res['s2n']      = self.get_object_s2n(i)
+        res['pars']     = self.get_object_pars(pars,i)
+        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+        res['g']        = res['pars'][2:2+2].copy()
+        res['g_cov']    = res['pars_cov'][2:2+2,2:2+2].copy()
+        res['T']        = res['pars'][4]
+        res['T_err']    = np.sqrt(res['pars_cov'][4,4])
+        res['T_ratio']  = res['T']/res['psf_T']
+
+        if self.model_name=='bdf':
+            res['fracdev'] = res['pars'][5]
+            res['fracdev_err'] = np.sqrt(res['pars_cov'][5,5])
+            flux_start=6
+        else:
+            flux_start=5
+
+        res['flux'] = res['pars'][flux_start:]
+        res['flux_cov'] = res['pars_cov'][flux_start:,flux_start:]
+        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+
+        return res
+
+    def get_object_s2n(self, i):
+        """
+        we don't have a stamp over which to integrate, so we use
+        the total flux s/n
+        """
+        allpars=self._result['pars']
+        allpars_cov=self._result['pars_cov']
+        pars     = self.get_object_pars(allpars,i)
+        pars_cov = self.get_object_cov(allpars_cov, i)
+
+        if self.model_name=='bdf':
+            flux_start=6
+        else:
+            flux_start=5
+
+        flux = pars[flux_start:]
+        flux_cov = pars_cov[flux_start:,flux_start:]
+
+        fones = np.ones(flux.size)
+        flux_cov_inv = np.linalg.inv(flux_cov)
+
+        fvar_inv = flux_cov_inv.sum()
+        if fvar_inv <= 0.0:
+            flux_s2n = -9999.0
+        else:
+            fvar = 1/fvar_inv
+            flux_avg = dot(fones, dot(flux_cov_inv, flux))*fvar
+            flux_avg_err = np.sqrt(fvar)
+
+            flux_s2n = flux_avg/flux_avg_err
+
+        return flux_s2n
+
 
 class MOFStamps(MOF):
     def __init__(self, list_of_obs, model, **keys):
@@ -440,22 +544,13 @@ class MOFStamps(MOF):
 
         self._result=result
 
-    def get_result_list(self):
-        """
-        get results split up for each object
-        """
-        if not hasattr(self,'_result_list'):
-            self._make_result_list()
-
-        return self._result_list
-
     def get_result_averaged_shapes(self):
         """
         not doing anything smart with the rest
         of the parameters yet, just copying first
         object
         """
-        res0=self._get_object_result(0)
+        res0=self.get_object_result(0)
         if self.nobj==1:
             return res0
 
@@ -514,53 +609,6 @@ class MOFStamps(MOF):
 
         return res0
 
-    def _make_result_list(self):
-        """
-        get fit statistics for each object separately
-        """
-        reslist=[]
-        for i in xrange(self.nobj):
-            res=self._get_object_result(i)
-            reslist.append(res)
-
-        self._result_list = reslist
-
-    def _get_object_result(self, i):
-
-        pars=self._result['pars']
-        pars_cov=self._result['pars_cov']
-
-        pres=self.get_object_psf_stats(i)
-
-        res={}
-
-        res['nband'] = self.nband
-        res['psf_g'] = pres['g']
-        res['psf_T'] = pres['T']
-
-        res['nfev']     = self._result['nfev']
-        res['s2n']      = self.get_object_s2n(i)
-        res['pars']     = self.get_object_pars(pars,i)
-        res['pars_cov'] = self.get_object_cov(pars_cov, i)
-        res['g']        = res['pars'][2:2+2].copy()
-        res['g_cov']    = res['pars_cov'][2:2+2,2:2+2].copy()
-        res['T']        = res['pars'][4]
-        res['T_err']    = np.sqrt(res['pars_cov'][4,4])
-        res['T_ratio']  = res['T']/res['psf_T']
-
-        if self.model_name=='bdf':
-            res['fracdev'] = res['pars'][5]
-            res['fracdev_err'] = np.sqrt(res['pars_cov'][5,5])
-            flux_start=6
-        else:
-            flux_start=5
-
-        res['flux'] = res['pars'][flux_start:]
-        res['flux_cov'] = res['pars_cov'][flux_start:,flux_start:]
-        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
-
-        return res
-
     def get_object_s2n(self, i):
         """
         get the s/n for the given object.  This uses just the model
@@ -577,8 +625,7 @@ class MOFStamps(MOF):
 
     def get_object_psf_stats(self, i):
         """
-        get the s/n for the given object.  This uses just the model
-        to calculate the s/n, but does use the full weight map
+        each object can have different psf for stamps version
         """
         g1sum=0.0
         g2sum=0.0
@@ -715,6 +762,26 @@ class MOFStamps(MOF):
                 image -= modelim
 
         return image
+
+    def get_object_band_pars(self, pars_in, iobj, band):
+        nbper=self.nband_pars_per
+
+        pars=np.zeros(nbper)
+
+        # either i*6 or i*7
+        beg=0
+        # either 5 or 6
+        end=0+nbper-1
+
+        ibeg = iobj*self.npars_per
+        iend = ibeg+nbper-1
+
+        pars[beg:end] = pars_in[ibeg:iend]
+
+        # now copy the flux
+        pars[end] = pars_in[iend+band]
+
+        return pars
 
     def _set_totpix(self):
         """

@@ -44,7 +44,7 @@ class PriorSimpleSepMulti(object):
 
             cen_prior=self.cen_priors[i]
 
-            ngmix.print_pars(pars[0:0+2], front='   checking cen: ')
+            #ngmix.print_pars(pars[0:0+2], front='   checking cen: ')
             #lnp1,lnp2=cen_prior.get_lnprob_scalar_sep(pars[0],pars[1])
             d1,d2=cen_prior.get_fdiff(pars[0], pars[1])
 
@@ -56,19 +56,19 @@ class PriorSimpleSepMulti(object):
             fdiff[index] = d2
             index += 1
 
-            ngmix.print_pars(pars[2:2+2], front='   checking g: ')
+            #ngmix.print_pars(pars[2:2+2], front='   checking g: ')
             #fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
             fdiff[index] = self.g_prior.get_fdiff_scalar(pars[2],pars[3])
             index += 1
 
-            ngmix.print_pars(pars[4:4+1], front='   checking T: ')
+            #ngmix.print_pars(pars[4:4+1], front='   checking T: ')
             #fdiff[index] =  self.T_prior.get_lnprob_scalar(pars[4], **keys)
             fdiff[index] =  self.T_prior.get_fdiff_scalar(pars[4])
             index += 1
 
             for i in range(self.nband):
                 F_prior=self.F_priors[i]
-                ngmix.print_pars(pars[5+i:5+i+1], front='   checking F: ')
+                #ngmix.print_pars(pars[5+i:5+i+1], front='   checking F: ')
                 #fdiff[index] = F_prior.get_lnprob_scalar(pars[5+i], **keys)
                 fdiff[index] = F_prior.get_fdiff_scalar(pars[5+i])
                 index += 1
@@ -79,7 +79,7 @@ class PriorSimpleSepMulti(object):
             #fdiff[fstart:index] = np.sqrt(chi2)
 
 
-        ngmix.print_pars(fdiff[0:index], front='    fdiff: ')
+        #ngmix.print_pars(fdiff[0:index], front='    fdiff: ')
         return index
 
     def get_prob_scalar(self, pars, **keys):
