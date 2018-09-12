@@ -28,8 +28,8 @@ from . import priors
 # weaker than usual
 _default_lm_pars={
     'maxfev':2000,
-    'ftol': 1.0e-3,
-    'xtol': 1.0e-3,
+    'ftol': 1.0e-5,
+    'xtol': 1.0e-5,
 }
 
 
