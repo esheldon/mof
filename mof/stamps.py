@@ -484,6 +484,11 @@ class MEDSifier(object):
             #minarea=DETECT_MINAREA,
             **self.sx_config
         )
+        logger.debug('found %d objects' % objs.size)
+        if objs.size==0:
+            self.cat=objs
+            return None
+
 
         flux_auto=np.zeros(objs.size)-9999.0
         fluxerr_auto=np.zeros(objs.size)-9999.0
