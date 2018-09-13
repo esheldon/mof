@@ -1215,7 +1215,14 @@ class GMixModelMulti(GMix):
         return image
     '''
 
-def get_full_image_guesses(objects, nband, jacobian, model, rng, Tguess=None):
+def get_full_image_guesses(objects,
+                           nband,
+                           jacobian,
+                           model,
+                           rng,
+                           Tguess=None,
+                           prior=None,
+                           guess_from_priors=False):
 
     if model=='bdf':
         npars_per=6+nband
@@ -1229,52 +1236,87 @@ def get_full_image_guesses(objects, nband, jacobian, model, rng, Tguess=None):
     nobj=len(objects)
 
     npars_tot = nobj*npars_per
-    guess = np.zeros(npars_tot)
 
-    for i in xrange(nobj):
-        row=objects['y'][i]
-        col=objects['x'][i]
+    if guess_from_priors:
+        #print('guessing from priors')
+        guess = prior.sample()
+        assert guess.size==npars_tot
 
-        v, u = jacobian(row, col)
+        # now just fix the centers because we want tighter guesses than
+        # the prior
+        for i in xrange(nobj):
+            row=objects['y'][i]
+            col=objects['x'][i]
 
-        if Tguess is not None:
-            T=Tguess
-        else:
-            T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+            v, u = jacobian(row, col)
 
-        flux=scale**2 * objects['flux'][i]
+            beg=i*npars_per
 
-        beg=i*npars_per
+            # always close guess for center
+            guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
+            guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
 
-        # always close guess for center
-        guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
-        guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
+    else:
+        guess = np.zeros(npars_tot)
+        for i in xrange(nobj):
+            row=objects['y'][i]
+            col=objects['x'][i]
 
-        # always arbitrary guess for shape
-        guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
-        guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
+            v, u = jacobian(row, col)
 
-        guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
+            if Tguess is not None:
+                T=Tguess
+            else:
+                T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+
+            flux=scale**2 * objects['flux'][i]
+
+            beg=i*npars_per
+
+            # always close guess for center
+            guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
+            guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
+
+            if guess_from_priors:
+                pguess=prior.sample()
+                # we already guessed the location
+                pguess=pguess[2:]
+                n=pguess.size
+                start=beg+2
+                end=start+n
+                guess[start:end] = pguess
+            else:
+
+                # always arbitrary guess for shape
+                guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
+                guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
+
+                guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
 
-        if model=='bdf':
-            # arbitrary guess for fracdev
-            guess[beg+5] = rng.uniform(low=0.4,high=0.6)
-            flux_start=6
-        else:
-            flux_start=5
-        # arbitrary guess for fracdev
-        #guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+                if model=='bdf':
+                    # arbitrary guess for fracdev
+                    guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+                    flux_start=6
+                else:
+                    flux_start=5
+                # arbitrary guess for fracdev
+                #guess[beg+5] = rng.uniform(low=0.4,high=0.6)
 
-        for band in xrange(nband):
-            flux_guess = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
-            guess[beg+flux_start+band] = flux_guess
+                for band in xrange(nband):
+                    flux_guess = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+                    guess[beg+flux_start+band] = flux_guess
 
     return guess
 
 
 
-def get_stamp_guesses(list_of_obs, detband, model, rng):
+def get_stamp_guesses(list_of_obs,
+                      detband,
+                      model,
+                      rng,
+                      prior=None,
+                      guess_from_priors=False):
     """
     get a guess based on metadata in the obs
 
@@ -1293,6 +1335,9 @@ def get_stamp_guesses(list_of_obs, detband, model, rng):
     npars_tot = nobj*npars_per
     guess = np.zeros(npars_tot)
 
+    #if guess_from_priors:
+    #    print('guessing from priors')
+
     for i,mbo in enumerate(list_of_obs):
         detobslist = mbo[detband]
         detmeta=detobslist.meta
@@ -1310,29 +1355,38 @@ def get_stamp_guesses(list_of_obs, detband, model, rng):
         guess[beg+0] = rng.uniform(low=-pos_range, high=pos_range)
         guess[beg+1] = rng.uniform(low=-pos_range, high=pos_range)
 
-        # always arbitrary guess for shape
-        guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
-        guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
-
-        guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
-
-        # arbitrary guess for fracdev
-        if model=='bdf':
-            guess[beg+5] = rng.uniform(low=0.4,high=0.6)
-            flux_start=6
+        if guess_from_priors:
+            pguess=prior.sample()
+            # we already guessed the location
+            pguess=pguess[2:]
+            n=pguess.size
+            start=beg+2
+            end=start+n
+            guess[start:end] = pguess
         else:
-            flux_start=5
+            # always arbitrary guess for shape
+            guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
+            guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
 
-        for band in xrange(nband):
-            obslist=mbo[band]
-            meta=obslist.meta
+            guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
-            # note we take out scale**2 in DES images when
-            # loading from MEDS so this isn't needed
-            flux=meta['flux']*scale**2
-            flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+            # arbitrary guess for fracdev
+            if model=='bdf':
+                guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+                flux_start=6
+            else:
+                flux_start=5
 
-            guess[beg+flux_start+band] = flux_guess
+            for band in xrange(nband):
+                obslist=mbo[band]
+                meta=obslist.meta
+
+                # note we take out scale**2 in DES images when
+                # loading from MEDS so this isn't needed
+                flux=meta['flux']*scale**2
+                flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+                guess[beg+flux_start+band] = flux_guess
 
     return guess
 

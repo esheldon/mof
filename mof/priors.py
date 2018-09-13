@@ -45,38 +45,37 @@ class PriorSimpleSepMulti(object):
             cen_prior=self.cen_priors[i]
 
             #ngmix.print_pars(pars[0:0+2], front='   checking cen: ')
-            #lnp1,lnp2=cen_prior.get_lnprob_scalar_sep(pars[0],pars[1])
-            d1,d2=cen_prior.get_fdiff(pars[0], pars[1])
+            lnp1,lnp2=cen_prior.get_lnprob_scalar_sep(pars[0],pars[1])
+            #d1,d2=cen_prior.get_fdiff(pars[0], pars[1])
 
 
-            #fdiff[index] = lnp1
-            fdiff[index] = d1
+            fdiff[index] = lnp1
+            #fdiff[index] = d1
             index += 1
-            #fdiff[index] = lnp2
-            fdiff[index] = d2
+            fdiff[index] = lnp2
+            #fdiff[index] = d2
             index += 1
 
             #ngmix.print_pars(pars[2:2+2], front='   checking g: ')
-            #fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
-            fdiff[index] = self.g_prior.get_fdiff_scalar(pars[2],pars[3])
+            fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
+            #fdiff[index] = self.g_prior.get_fdiff_scalar(pars[2],pars[3])
             index += 1
 
             #ngmix.print_pars(pars[4:4+1], front='   checking T: ')
-            #fdiff[index] =  self.T_prior.get_lnprob_scalar(pars[4], **keys)
-            fdiff[index] =  self.T_prior.get_fdiff_scalar(pars[4])
+            fdiff[index] =  self.T_prior.get_lnprob_scalar(pars[4], **keys)
+            #fdiff[index] =  self.T_prior.get_fdiff_scalar(pars[4])
             index += 1
 
-            for i in range(self.nband):
-                F_prior=self.F_priors[i]
-                #ngmix.print_pars(pars[5+i:5+i+1], front='   checking F: ')
-                #fdiff[index] = F_prior.get_lnprob_scalar(pars[5+i], **keys)
-                fdiff[index] = F_prior.get_fdiff_scalar(pars[5+i])
+            for j in range(self.nband):
+                F_prior=self.F_priors[j]
+                #fdiff[index] = F_prior.get_fdiff_scalar(pars[5+j])
+                fdiff[index] = F_prior.get_lnprob_scalar(pars[5+j])
                 index += 1
 
-            #chi2 = -2*fdiff[fstart:index].copy()
+            chi2 = -2*fdiff[fstart:index].copy()
             #ngmix.print_pars(chi2, front='    chi2: ')
-            #chi2.clip(min=0.0, max=None, out=chi2)
-            #fdiff[fstart:index] = np.sqrt(chi2)
+            chi2.clip(min=0.0, max=None, out=chi2)
+            fdiff[fstart:index] = np.sqrt(chi2)
 
 
         #ngmix.print_pars(fdiff[0:index], front='    fdiff: ')
@@ -109,10 +108,39 @@ class PriorSimpleSepMulti(object):
             lnp += self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
             lnp += self.T_prior.get_lnprob_scalar(pars[4], **keys)
 
-            for i, F_prior in enumerate(self.F_priors):
-                lnp += F_prior.get_lnprob_scalar(pars[5+i], **keys)
+            for j, F_prior in enumerate(self.F_priors):
+                lnp += F_prior.get_lnprob_scalar(pars[5+j], **keys)
 
         return lnp
+
+    def sample(self):
+        """
+        Get random samples
+        """
+
+        samples=np.zeros(self.npars_per*self.nobj)
+
+        for i in range(self.nobj):
+            cen_prior=self.cen_priors[i]
+
+            cen1,cen2 = cen_prior.sample()
+            g1,g2=self.g_prior.sample2d()
+            T=self.T_prior.sample()
+
+            beg=i*self.npars_per
+            end=(i+1)*self.npars_per
+
+            samples[beg+0] = cen1
+            samples[beg+1] = cen2
+            samples[beg+2] = g1
+            samples[beg+3] = g2
+            samples[beg+4] = T
+
+            for j, F_prior in enumerate(self.F_priors):
+                F=F_prior.sample()
+                samples[beg+5+j] = F
+
+        return samples
 
 
 class PriorBDFSepMulti(object):
@@ -175,9 +203,9 @@ class PriorBDFSepMulti(object):
             fdiff[index] =  self.fracdev_prior.get_lnprob_scalar(pars[5], **keys)
             index += 1
 
-            for i in range(self.nband):
-                F_prior=self.F_priors[i]
-                fdiff[index] = F_prior.get_lnprob_scalar(pars[6+i], **keys)
+            for j in range(self.nband):
+                F_prior=self.F_priors[j]
+                fdiff[index] = F_prior.get_lnprob_scalar(pars[6+j], **keys)
                 index += 1
 
             chi2 = -2*fdiff[fstart:index].copy()
@@ -215,10 +243,42 @@ class PriorBDFSepMulti(object):
             lnp += self.T_prior.get_lnprob_scalar(pars[4], **keys)
             lnp += self.fracdev_prior.get_lnprob_scalar(pars[5], **keys)
 
-            for i, F_prior in enumerate(self.F_priors):
-                lnp += F_prior.get_lnprob_scalar(pars[6+i], **keys)
+            for j, F_prior in enumerate(self.F_priors):
+                lnp += F_prior.get_lnprob_scalar(pars[6+j], **keys)
 
         return lnp
 
+
+    def sample(self):
+        """
+        Get random samples
+        """
+
+        samples=np.zeros(self.npars_per*self.nobj)
+
+        for i in range(self.nobj):
+            cen_prior=self.cen_priors[i]
+
+            cen1,cen2 = cen_prior.sample()
+            g1,g2=self.g_prior.sample2d()
+            T=self.T_prior.sample()
+            fracdev=self.fracdev_prior.sample()
+
+            beg=i*self.npars_per
+            end=(i+1)*self.npars_per
+
+            samples[beg+0] = cen1
+            samples[beg+1] = cen2
+            samples[beg+2] = g1
+            samples[beg+3] = g2
+            samples[beg+4] = T
+            samples[beg+5] = fracdev
+
+            for j, F_prior in enumerate(self.F_priors):
+                F_prior=self.F_priors[j]
+                F=F_prior.sample()
+                samples[beg+6+j] = F
+
+        return samples
 
 
