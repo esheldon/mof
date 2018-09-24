@@ -674,6 +674,7 @@ class MOFStamps(MOF):
             epoch/observation
         """
 
+
         if index is None:
             mbobs_list=[]
             for index in xrange(self.nobj):
@@ -694,6 +695,10 @@ class MOFStamps(MOF):
                     band=band,
                 )
                 output.append(obslist)
+
+            all_pars = self._result['pars']
+            pars = self.get_object_pars(all_pars,index)
+            output.meta['fit_pars'] = pars
 
         elif obsnum is None:
             # band specified, but not the observation, so get all

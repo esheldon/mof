@@ -112,7 +112,7 @@ class MEDSNbrs(object):
         #data types
         nbrs_data = []
         dtype = [('number','i8'),('nbr_number','i8')]
-        print("config:",self.conf)
+        #print("config:",self.conf)
 
         for mindex in range(self.meds_list[0].size):
             nbrs = []
