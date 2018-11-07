@@ -279,10 +279,12 @@ class MEDSInterface(meds.MEDS):
         c=self._cat
 
         scale=jacobian.get_scale()
-        x2=c['x2'][iobj]
-        y2=c['y2'][iobj]
-        T = (x2 + y2)
-        flux = c['flux_auto'][iobj]
+        #x2=c['x2'][iobj]
+        #y2=c['y2'][iobj]
+        #T = (x2 + y2)
+        #flux = c['flux_auto'][iobj]
+        T=-9999.0
+        flux=-9999.0
         meta=dict(
             id=c['id'][iobj],
             T=T,
@@ -384,6 +386,7 @@ class MEDSifier(object):
                  cat=None,
                  seg=None,
                  sx_config=None,
+                 peak_config=None,
                  meds_config=None):
         """
         very simple MEDS maker for images. Assumes the images
@@ -412,7 +415,10 @@ class MEDSifier(object):
             self.bmask=np.zeros(seg.shape, dtype='i4')
         else:
             self._set_detim()
-            self._run_sep()
+            if peak_config is not None:
+                self._run_peak_finder(peak_config)
+            else:
+                self._run_sep()
 
     def get_multiband_meds(self):
         """
@@ -625,6 +631,128 @@ class MEDSifier(object):
         cat['cutout_row'][:,0] = cat['orig_row'][:,0] - cat['orig_start_row'][:,0]
         cat['cutout_col'][:,0] = cat['orig_col'][:,0] - cat['orig_start_col'][:,0]
 
+
+        self.seg=seg
+        self.bmask=np.zeros(seg.shape, dtype='i4')
+        self.cat=cat
+
+    def _make_convolved_image(self, im, psf_im):
+        import scipy.signal
+        return scipy.signal.convolve2d(
+            im,
+            psf_im,
+            mode='same',
+        )
+
+
+    def _run_peak_finder(self, peak_config):
+        import galsim
+        from . import peaks
+
+        #print('running peak finder')
+        imsize=self.detim.size
+        rows = np.zeros(imsize)
+        cols = np.zeros(imsize)
+
+        thresh = peak_config['noise_thresh']*self.detnoise
+
+        psf = galsim.Gaussian(fwhm=0.9)
+        wcs=self.datalist[0]['wcs']
+        scale, _, _, _ = wcs.getDecomposition()
+        psf_im = psf.drawImage(
+            nx=21,
+            ny=21,
+            scale=scale,
+        ).array
+
+        cim = self._make_convolved_image(self.detim, psf_im)
+
+        npeaks = peaks.find_peaks(
+            cim,
+            thresh,
+            rows,
+            cols,
+        )
+        seg=np.zeros(self.detim.shape,dtype='i4')
+
+        objs=np.zeros(npeaks, dtype=[('x','f8'),('y','f8')])
+        logger.debug('found %d peaks' % npeaks)
+        if npeaks == 0:
+            self.cat=objs
+            return
+
+        objs['y'] = rows[0:npeaks]
+        objs['x'] = cols[0:npeaks]
+
+        ncut=2 # need this to make sure array
+        new_dt=[
+            ('id','i8'),
+            ('number','i4'),
+            ('ncutout','i4'),
+            ('kron_radius','f4'),
+            ('flux_auto','f4'),
+            ('fluxerr_auto','f4'),
+            ('flux_radius','f4'),
+            ('isoarea_image','f4'),
+            ('iso_radius','f4'),
+            ('box_size','i4'),
+            ('file_id','i8',ncut),
+            ('orig_row','f4',ncut),
+            ('orig_col','f4',ncut),
+            ('orig_start_row','i8',ncut),
+            ('orig_start_col','i8',ncut),
+            ('orig_end_row','i8',ncut),
+            ('orig_end_col','i8',ncut),
+            ('cutout_row','f4',ncut),
+            ('cutout_col','f4',ncut),
+            ('dudrow','f8',ncut),
+            ('dudcol','f8',ncut),
+            ('dvdrow','f8',ncut),
+            ('dvdcol','f8',ncut),
+        ]
+        cat=eu.numpy_util.add_fields(objs, new_dt)
+        cat['id'] = np.arange(cat.size)
+        cat['number'] = np.arange(1,cat.size+1)
+        cat['ncutout'] = 1
+        #cat['flux_auto'] = flux_auto
+        #cat['fluxerr_auto'] = fluxerr_auto
+        #cat['flux_radius'] = flux_radius
+        cat['dudrow'][:,0] = wcs.dudy
+        cat['dudcol'][:,0] = wcs.dudx
+        cat['dvdrow'][:,0] = wcs.dvdy
+        cat['dvdcol'][:,0] = wcs.dvdx
+
+        box_size=32
+
+        half_box_size = box_size//2
+
+        maxrow,maxcol=self.detim.shape
+
+        cat['box_size'] = box_size
+
+        cat['orig_row'][:,0] = cat['y']
+        cat['orig_col'][:,0] = cat['x']
+
+        orow = cat['orig_row'][:,0].astype('i4')
+        ocol = cat['orig_col'][:,0].astype('i4')
+
+        ostart_row = orow - half_box_size + 1
+        ostart_col = ocol - half_box_size + 1
+        oend_row   = orow + half_box_size + 1 # plus one for slices
+        oend_col   = ocol + half_box_size + 1
+
+        ostart_row.clip(min=0, out=ostart_row)
+        ostart_col.clip(min=0, out=ostart_col)
+        oend_row.clip(max=maxrow, out=oend_row)
+        oend_col.clip(max=maxcol, out=oend_col)
+
+        # could result in smaller than box_size above
+        cat['orig_start_row'][:,0] = ostart_row
+        cat['orig_start_col'][:,0] = ostart_col
+        cat['orig_end_row'][:,0] = oend_row
+        cat['orig_end_col'][:,0] = oend_col
+        cat['cutout_row'][:,0] = cat['orig_row'][:,0] - cat['orig_start_row'][:,0]
+        cat['cutout_col'][:,0] = cat['orig_col'][:,0] - cat['orig_start_col'][:,0]
 
         self.seg=seg
         self.bmask=np.zeros(seg.shape, dtype='i4')
