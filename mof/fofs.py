@@ -551,6 +551,8 @@ def plot_fofs(m,
               fof,
               orig_dims=None,
               type='dot',
+              fof_type='dot',
+              fof_size=1,
               minsize=2,
               show=False,
               width=1000,
@@ -598,7 +600,8 @@ def plot_fofs(m,
         aratio = (ymax-ymin)/(xmax-xmin)
     else:
         xrng,yrng=None,None
-        aratio=None
+        #aratio=None
+        aratio = (ymax-ymin)/(xmax-xmin)
 
     plt=biggles.FramedPlot(
         xlabel='RA',
@@ -628,8 +631,8 @@ def plot_fofs(m,
 
                 pts = biggles.Points(
                     xx, yy, 
-                    type=type,
-                    #size=1,
+                    type=fof_type,
+                    size=fof_size,
                     color=color,
                 )
 
