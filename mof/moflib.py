@@ -1355,6 +1355,7 @@ def get_stamp_guesses(list_of_obs,
         if 'Tsky' in detmeta:
             T=detmeta['Tsky']
         else:
+            # not good if bands have different scales
             T=detmeta['T']*scale**2
 
         beg=i*npars_per
@@ -1385,8 +1386,10 @@ def get_stamp_guesses(list_of_obs,
             else:
                 flux_start=5
 
-            for band in xrange(nband):
+            #for band in xrange(nband):
+            for band, obslist in enumerate(mbo):
                 obslist=mbo[band]
+                scale = obslist[0].jacobian.scale
                 meta=obslist.meta
 
                 # note we take out scale**2 in DES images when
