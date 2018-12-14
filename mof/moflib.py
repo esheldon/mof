@@ -1352,10 +1352,10 @@ def get_stamp_guesses(list_of_obs,
         scale=obs.jacobian.get_scale()
         pos_range = scale*0.1
 
-        if 'T' in detmeta:
-            T=detmeta['T']*scale**2
-        else:
+        if 'Tsky' in detmeta:
             T=detmeta['Tsky']
+        else:
+            T=detmeta['T']*scale**2
 
         beg=i*npars_per
 
