@@ -121,10 +121,7 @@ class GSMOF(MOFStamps):
                         ierr    = meta['ierr']
                         psf_ii  = meta['psf_ii']
 
-                        scale=meta['scale']
-                        maxrad=obs.image.shape[0]*0.5*scale
-                        maxrad=1.e9
-
+                        maxrad = self._get_maxrad(obs)
                         nbr_models = self._get_nbr_models(pars, meta, band,maxrad)
 
                         if len(nbr_models) > 0:
@@ -506,7 +503,7 @@ class GSMOF(MOFStamps):
         central_model = self.make_model(band_pars)
 
         if include_nbrs:
-            maxrad=1.e9
+            maxrad = self._get_maxrad(obs)
             nbr_models = self._get_nbr_models(pars, meta, band, maxrad)
         else:
             nbr_models=[]
@@ -528,6 +525,17 @@ class GSMOF(MOFStamps):
             method='no_pixel',
         )
         return image.array
+
+    def _get_maxrad(self, obs):
+        """
+        criteria for now is that the object is within
+        a stamp radii.  Not great at all
+
+        This is done because off chip objects seem to cause
+        a big problem for the k space fitter
+        """
+        scale=obs.meta['scale']
+        return obs.image.shape[0]*scale*0.5
 
 class GSMOFR(GSMOF):
     """
@@ -569,9 +577,7 @@ class GSMOFR(GSMOF):
                         ierr    = meta['ierr']
                         scratch = meta['scratch']
 
-                        #scale=obs._jacobian.scale
-                        #maxrad=obs.image.shape[0]*0.5*scale
-                        maxrad=1.e9
+                        maxrad = self._get_maxrad(obs)
                         nbr_models = self._get_nbr_models(pars, meta, band,maxrad)
 
                         if len(nbr_models) > 0:
@@ -650,6 +656,7 @@ class GSMOFR(GSMOF):
                         ierr[w] = np.sqrt(weight[w])
 
                     meta['ierr'] = ierr
+                    meta['scale'] = obs.jacobian.scale
                     self._create_models_in_obs(obs)
 
                     totpix += weight.size
