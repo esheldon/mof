@@ -762,3 +762,140 @@ def make_bdf(half_light_radius=None,
     )
 
     return galsim.Add(bulge, disk).withFlux(flux)
+
+# these are just examples, users should probably write their own
+def get_mof_stamps_prior_gs(list_of_obs, model, rng):
+    """
+    Not generic, need to let this be configurable
+    """
+
+    nband=len(list_of_obs[0])
+
+    obs=list_of_obs[0][0][0] 
+    cen_sigma=obs.jacobian.get_scale() # a pixel
+    cen_prior=ngmix.priors.CenPrior(
+        0.0,
+        0.0,
+        cen_sigma, cen_sigma,
+        rng=rng,
+    )
+
+    g_prior=ngmix.priors.GPriorBA(
+        0.2,
+        rng=rng,
+    )
+
+    hlr_prior = ngmix.priors.FlatPrior(
+        0.0001, 1.0e6,
+        rng=rng,
+    )
+
+    F_prior = ngmix.priors.FlatPrior(
+        0.0001, 1.0e9,
+        rng=rng,
+    )
+
+    if model=='bdf':
+        #fracdev_prior = ngmix.priors.Normal(0.5, 0.1, rng=rng)
+        fracdev_prior = ngmix.priors.TruncatedGaussian(0.5, 0.1, -1, 1, rng=rng)
+        return ngmix.joint_prior.PriorBDFSep(
+            cen_prior,
+            g_prior,
+            hlr_prior,
+            fracdev_prior,
+            [F_prior]*nband,
+        )
+    else:
+        return ngmix.joint_prior.PriorSimpleSep(
+            cen_prior,
+            g_prior,
+            hlr_prior,
+            [F_prior]*nband,
+        )
+
+def get_stamp_guesses_gs(list_of_obs,
+                         detband,
+                         model,
+                         rng,
+                         prior=None,
+                         guess_from_priors=False):
+    """
+    get a guess based on metadata in the obs
+
+    T guess is gotten from detband
+    """
+
+    nband=len(list_of_obs[0])
+
+    if model=='bdf':
+        npars_per=6+nband
+    else:
+        npars_per=5+nband
+
+    nobj=len(list_of_obs)
+
+    npars_tot = nobj*npars_per
+    guess = np.zeros(npars_tot)
+
+    #if guess_from_priors:
+    #    print('guessing from priors')
+
+    for i,mbo in enumerate(list_of_obs):
+        detobslist = mbo[detband]
+        detmeta=detobslist.meta
+
+        obs=detobslist[0]
+
+        scale=obs.jacobian.get_scale()
+        pos_range = scale*0.1
+
+        if 'Tsky' in detmeta:
+            hlr_guess = np.sqrt( detmeta['Tsky'] / 2.0 )
+        else:
+            T=detmeta['T']*scale**2
+            hlr_guess = np.sqrt( T / 2.0 )
+
+
+        beg=i*npars_per
+
+        # always close guess for center
+        guess[beg+0] = rng.uniform(low=-pos_range, high=pos_range)
+        guess[beg+1] = rng.uniform(low=-pos_range, high=pos_range)
+
+        if guess_from_priors:
+            pguess=prior.sample()
+            # we already guessed the location
+            pguess=pguess[2:]
+            n=pguess.size
+            start=beg+2
+            end=start+n
+            guess[start:end] = pguess
+        else:
+            # always arbitrary guess for shape
+            guess[beg+2] = rng.uniform(low=-0.05, high=0.05)
+            guess[beg+3] = rng.uniform(low=-0.05, high=0.05)
+
+            guess[beg+4] = hlr_guess*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+            # arbitrary guess for fracdev
+            if model=='bdf':
+                guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+                flux_start=6
+            else:
+                flux_start=5
+
+            #for band in xrange(nband):
+            for band, obslist in enumerate(mbo):
+                obslist=mbo[band]
+                scale = obslist[0].jacobian.scale
+                meta=obslist.meta
+
+                # note we take out scale**2 in DES images when
+                # loading from MEDS so this isn't needed
+                flux=meta['flux']
+                flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+
+                guess[beg+flux_start+band] = flux_guess
+
+    return guess
+
