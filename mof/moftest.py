@@ -69,6 +69,18 @@ class Sim(dict):
 
     def get_medsifier(self):
         from .stamps import MEDSifier
+        meds_config={
+            'min_box_size': 32,
+            'max_box_size': 128,
+
+
+            'box_type': 'iso_radius',
+            'rad_min': 4,
+            'rad_fac': 2,
+            'box_padding': 2,
+        }
+
+
         dlist=[]
         for olist in self.obs:
             # assuming only one image per band
@@ -83,7 +95,7 @@ class Sim(dict):
                 )
             )
 
-        return MEDSifier(dlist)
+        return MEDSifier(dlist, meds_config=meds_config)
 
     def _make_g_pdf(self):
         c=self['pdfs']['g']
@@ -256,10 +268,10 @@ class Sim(dict):
         if 'hlr_flux' in self['pdfs']:
             hlr, flux = self.hlr_flux_pdf.sample()
         else:
-            disk_hlr = self.hlr_pdf.sample()
+            hlr = self.hlr_pdf.sample()
 
             if self.F_pdf=='track_hlr':
-                flux = disk_hlr**2 *self['pdfs']['F']['factor']
+                flux = hlr**2 *self['pdfs']['F']['factor']
             else:
                 flux = self.F_pdf.sample()
 
