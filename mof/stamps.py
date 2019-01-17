@@ -279,12 +279,15 @@ class MEDSInterface(meds.MEDS):
         c=self._cat
 
         scale=jacobian.get_scale()
-        #x2=c['x2'][iobj]
-        #y2=c['y2'][iobj]
-        #T = (x2 + y2)
+        x2=c['x2'][iobj]
+        y2=c['y2'][iobj]
+        T = (x2 + y2)
         #flux = c['flux_auto'][iobj]
-        T=-9999.0
-        flux=-9999.0
+        #T=-9999.0
+        if 'flux_auto' in c.dtype.names:
+            flux = c['flux_auto'][iobj]
+        else:
+            flux=-9999.0
         meta=dict(
             id=c['id'][iobj],
             T=T,
