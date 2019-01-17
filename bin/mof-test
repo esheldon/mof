@@ -298,7 +298,7 @@ def main():
                 list_of_obs.append(mbo)
 
             if args.galsim:
-                prior=mof.moflib.get_mof_stamps_prior_gs(
+                prior=mof.galsimfit.get_mof_stamps_prior_gs(
                     list_of_obs,
                     config['fit_model'],
                     fitrng,
@@ -343,7 +343,7 @@ def main():
         for itry in range(ntry):
             if args.stamps:
                 if args.galsim:
-                    guess = mof.moflib.get_stamp_guesses_gs(
+                    guess = mof.galsimfit.get_stamp_guesses_gs(
                         list_of_obs, detband, config['fit_model'], fitrng,
                     )
                 else:
