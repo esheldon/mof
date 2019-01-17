@@ -232,8 +232,8 @@ class GSMOF(MOFStamps):
         else:
             flux = pars[5]
 
-        if hlr < 0.0001:
-            raise GMixRangeError("low hlr: %g" % hlr)
+        #if hlr <= 1.0e-9:
+        #    raise GMixRangeError("low hlr: %g" % hlr)
 
         # this throws a generic runtime error so there is no way to tell what
         # went wrong
