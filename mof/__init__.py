@@ -1,6 +1,6 @@
 from . import moflib
 from .moflib import MOF, MOFStamps
-from .galsimfit import GSMOF, GSMOFR
+from .galsimfit import GSMOF, KGSMOF
 
 from . import priors
 

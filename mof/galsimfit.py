@@ -11,7 +11,7 @@ from ngmix.priors import LOWVAL
 
 from .moflib import MOFStamps, DEFAULT_LM_PARS
 
-class GSMOF(MOFStamps):
+class KGSMOF(MOFStamps):
     """
     version using galsim for modelling, and doing convolutions by multiplying
     in fourier space
@@ -537,7 +537,7 @@ class GSMOF(MOFStamps):
         scale=obs.meta['scale']
         return obs.image.shape[0]*scale*0.5
 
-class GSMOFR(GSMOF):
+class GSMOF(KGSMOF):
     """
     slow real space fitter
     """
@@ -610,6 +610,12 @@ class GSMOFR(GSMOF):
             fdiff[:] = LOWVAL
 
         return fdiff
+
+    def _get_maxrad(self, obs):
+        """
+        no problem with off-stamp neighbors for real space fitting
+        """
+        return 1.e9
 
     def _set_all_obs(self, list_of_obs):
         self.list_of_obs = list_of_obs

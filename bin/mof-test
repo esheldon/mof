@@ -30,8 +30,9 @@ parser.add_argument('--galsim',
                     action='store_true',
                     help='use postage stamps')
 
-
-
+parser.add_argument('--kspace',
+                    action='store_true',
+                    help='use k space')
 
 parser.add_argument('--save',
                     action='store_true',
@@ -304,11 +305,18 @@ def main():
                     fitrng,
                 )
 
-                fitter=mof.galsimfit.GSMOF(
-                    list_of_obs,
-                    config['fit_model'],
-                    prior=prior,
-                )
+                if args.kspace:
+                    fitter=mof.galsimfit.KGSMOF(
+                        list_of_obs,
+                        config['fit_model'],
+                        prior=prior,
+                    )
+                else:
+                    fitter=mof.galsimfit.GSMOF(
+                        list_of_obs,
+                        config['fit_model'],
+                        prior=prior,
+                    )
 
 
             else:
