@@ -1,3 +1,16 @@
+"""
+todo
+
+    - maybe we can just do the full MOF with cosmos, but still with nbrs
+    determined by DES apparent object sizes, and then do just a template
+    fitting MOF for the other bands.  This would maybe let us do the real space
+    fitting if it is better.
+
+    - understand why getting too big fft errors.  Maybe need to 
+      limit hlr? Or is it due to no longer limiting fracdev?
+
+    - guesses are still an issue I think. More testing with injections.
+"""
 import numpy as np
 import ngmix
 from ngmix.gexceptions import GMixRangeError
