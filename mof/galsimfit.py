@@ -122,8 +122,7 @@ class KGSMOF(MOFStamps):
                         psf_ii  = meta['psf_ii']
 
                         maxrad = self._get_maxrad(obs)
-                        nbr_models = self._get_nbr_models(pars, meta, band,maxrad)
-
+                        nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad)
                         if len(nbr_models) > 0:
                             all_models=[central_model] + nbr_models
                             
@@ -159,9 +158,11 @@ class KGSMOF(MOFStamps):
 
         return fdiff
 
-    def _get_nbr_models(self, pars, meta, band, maxrad):
+    def _get_nbr_models(self, iobj, pars, meta, band, maxrad):
+        return []
         models=[]
         for nbr in meta['nbr_data']:
+            #assert nbr['index'] != iobj
             nbr_pars = self.get_object_band_pars(
                 pars,
                 nbr['index'],
@@ -575,10 +576,9 @@ class GSMOF(KGSMOF):
                         meta    = obs.meta
                         model   = meta['model']
                         ierr    = meta['ierr']
-                        scratch = meta['scratch']
 
                         maxrad = self._get_maxrad(obs)
-                        nbr_models = self._get_nbr_models(pars, meta, band,maxrad)
+                        nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad)
 
                         if len(nbr_models) > 0:
                             all_models=[central_model] + nbr_models
@@ -591,18 +591,20 @@ class GSMOF(KGSMOF):
                             total_model,
                             obs.psf.meta['ii'],
                         )
-                        total_model.drawImage(image=model)
-
-                        scratch.array[:,:] = model.array[:,:]
-                        scratch.array[:,:] -= obs.image
+                        total_model.drawImage(
+                            image=model,
+                            method='no_pixel',
+                        )
 
                         # (model-data)/err
-                        scratch.array[:,:] *= ierr
+                        tfdiff = model.array
+                        tfdiff -= obs.image
+                        tfdiff *= ierr
 
                         # now copy into the full fdiff array
-                        imsize = scratch.array.size
+                        imsize = tfdiff.size
 
-                        fdiff[start:start+imsize] = scratch.array.real.ravel()
+                        fdiff[start:start+imsize] = tfdiff.ravel()
 
                         start += imsize
 
@@ -671,7 +673,6 @@ class GSMOF(KGSMOF):
 
     def _create_models_in_obs(self, obs):
         import galsim
-        ex=obs.image
 
         psf_gsimage = galsim.Image(
             obs.psf.image/obs.psf.image.sum(),
@@ -690,7 +691,6 @@ class GSMOF(KGSMOF):
 
         meta=obs.meta
         meta['model'] = gsimage
-        meta['scratch'] = gsimage.copy()
         obs.psf.meta['ii'] = psf_ii
 
     def make_image(self, iobj, band=0, obsnum=0, include_nbrs=False):
