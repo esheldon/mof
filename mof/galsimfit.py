@@ -224,6 +224,7 @@ class KGSMOF(MOFStamps):
         """
         make the galsim model
         """
+        from galsim import GalSimFFTSizeError
 
         model = self.make_round_model(pars)
 
@@ -238,7 +239,7 @@ class KGSMOF(MOFStamps):
         # argh another generic error
         try:
             model = model.shear(g1=g1, g2=g2)
-        except (RuntimeError,ValueError) as err:
+        except (GalSimFFTSizeError,RuntimeError,ValueError) as err:
             raise GMixRangeError(str(err))
 
         model = model.shift(dx, dy)
