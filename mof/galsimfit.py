@@ -737,7 +737,7 @@ class GSMOF(KGSMOF):
 
         if include_nbrs:
             maxrad=1.e9
-            nbr_models = self._get_nbr_models(pars, meta, band, maxrad)
+            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad)
         else:
             nbr_models=[]
 
