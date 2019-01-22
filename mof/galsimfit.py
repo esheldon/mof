@@ -231,10 +231,14 @@ class KGSMOF(MOFStamps):
         g1    = pars[2]
         g2    = pars[3]
 
+        g = np.sqrt(g1**2 + g2**2)
+        if g > 0.99:
+            raise GMixRangeError('g too big')
+
         # argh another generic error
         try:
             model = model.shear(g1=g1, g2=g2)
-        except ValueError as err:
+        except (RuntimeError,ValueError) as err:
             raise GMixRangeError(str(err))
 
         model = model.shift(dx, dy)
