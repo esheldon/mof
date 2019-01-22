@@ -171,8 +171,19 @@ class KGSMOF(MOFStamps):
 
         return fdiff
 
+    def _get_maxrad(self, obs):
+        """
+        criteria for now is that the object is within
+        a stamp radii.  Not great at all
+
+        This is done because off chip objects seem to cause
+        a big problem for the k space fitter
+        """
+        scale=obs.meta['scale']
+        return obs.image.shape[0]*scale*0.5
+
     def _get_nbr_models(self, iobj, pars, meta, band, maxrad):
-        return []
+        #return []
         models=[]
         for nbr in meta['nbr_data']:
             #assert nbr['index'] != iobj
@@ -518,7 +529,7 @@ class KGSMOF(MOFStamps):
 
         if include_nbrs:
             maxrad = self._get_maxrad(obs)
-            nbr_models = self._get_nbr_models(pars, meta, band, maxrad)
+            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad)
         else:
             nbr_models=[]
 
@@ -539,17 +550,6 @@ class KGSMOF(MOFStamps):
             method='no_pixel',
         )
         return image.array
-
-    def _get_maxrad(self, obs):
-        """
-        criteria for now is that the object is within
-        a stamp radii.  Not great at all
-
-        This is done because off chip objects seem to cause
-        a big problem for the k space fitter
-        """
-        scale=obs.meta['scale']
-        return obs.image.shape[0]*scale*0.5
 
 class GSMOF(KGSMOF):
     """
@@ -880,7 +880,6 @@ def get_stamp_guesses_gs(list_of_obs,
         else:
             T=detmeta['T']*scale**2
             hlr_guess = np.sqrt( T / 2.0 )
-
 
         beg=i*npars_per
 
