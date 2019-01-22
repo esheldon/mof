@@ -224,7 +224,6 @@ class KGSMOF(MOFStamps):
         """
         make the galsim model
         """
-        from galsim import GalSimFFTSizeError
 
         model = self.make_round_model(pars)
 
@@ -239,7 +238,7 @@ class KGSMOF(MOFStamps):
         # argh another generic error
         try:
             model = model.shear(g1=g1, g2=g2)
-        except (GalSimFFTSizeError,RuntimeError,ValueError) as err:
+        except (RuntimeError,ValueError) as err:
             raise GMixRangeError(str(err))
 
         model = model.shift(dx, dy)
@@ -567,6 +566,7 @@ class GSMOF(KGSMOF):
         The npars elements contain -ln(prior)
         """
         import galsim
+        from galsim import GalSimFFTSizeError
 
         # we cannot keep sending existing array into leastsq, don't know why
         fdiff=np.zeros(self.fdiff_size)
@@ -626,7 +626,7 @@ class GSMOF(KGSMOF):
 
                         start += imsize
 
-        except GMixRangeError as err:
+        except (GMixRangeError,GalSimFFTSizeError) as err:
             fdiff[:] = LOWVAL
 
         return fdiff
