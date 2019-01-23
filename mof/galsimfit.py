@@ -1,6 +1,8 @@
 """
 todo
 
+    - PSF fit and stats (use k space for that)
+    - s/n
     - maybe we can just do the full MOF with cosmos, but still with nbrs
     determined by DES apparent object sizes, and then do just a template
     fitting MOF for the other bands.  This would maybe let us do the real space
