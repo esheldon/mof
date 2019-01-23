@@ -26,6 +26,7 @@ from ngmix.priors import LOWVAL
 
 from .moflib import MOFStamps, DEFAULT_LM_PARS
 
+
 class KGSMOF(MOFStamps):
     """
     version using galsim for modelling, and doing convolutions by multiplying
@@ -206,8 +207,6 @@ class KGSMOF(MOFStamps):
             if rad_offset < maxrad:
                 nbr_pars[0] += nbr['v0']
                 nbr_pars[1] += nbr['u0']
-                #nbr_pars[0] = nbr['v0']
-                #nbr_pars[1] = nbr['u0']
                 nbr_model = self.make_model(nbr_pars)
                 models.append(nbr_model)
 
@@ -739,7 +738,7 @@ class GSMOF(KGSMOF):
         central_model = self.make_model(band_pars)
 
         if include_nbrs:
-            maxrad=1.e9
+            maxrad=self._get_maxrad(obs)
             nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad)
         else:
             nbr_models=[]
@@ -761,6 +760,343 @@ class GSMOF(KGSMOF):
             method='no_pixel',
         )
         return image.array
+
+class GSMOFFlux(GSMOF):
+    """
+    flux only fitter
+    """
+    def __init__(self, list_of_obs, model, **keys):
+
+        self._set_all_obs(list_of_obs)
+        self._setup_nbrs()
+        self.model=model
+
+        self._set_model_maker()
+
+        self.nobj=len(self.list_of_obs)
+
+        self.npars_per = self.nband
+        self.nband_pars_per=1
+
+        # fluxes for each object
+        self.n_prior_pars=0
+
+        self.npars = self.nobj*self.npars_per
+
+        if model=='bdf':
+            self.nband_pars_per_full=7
+        else:
+            self.nband_pars_per_full=6
+
+        self.lm_pars={}
+        self.lm_pars.update(DEFAULT_LM_PARS)
+
+        lm_pars=keys.get('lm_pars',None)
+        if lm_pars is not None:
+            self.lm_pars.update(lm_pars)
+
+        self._init_model_images()
+        self._set_fdiff_size()
+
+    def _calc_fdiff(self, pars):
+        """
+        vector with (model-data)/error.
+
+        The npars elements contain -ln(prior)
+        """
+        import galsim
+        from galsim import GalSimFFTSizeError
+
+        # we cannot keep sending existing array into leastsq, don't know why
+        fdiff=np.zeros(self.fdiff_size)
+        start = 0
+
+        try:
+
+            for iobj,mbo in enumerate(self.list_of_obs):
+                # fill priors and get new start
+                objpars=self.get_object_pars(pars, iobj)
+                start = self._fill_priors(objpars, fdiff, start)
+
+                for band,obslist in enumerate(mbo):
+                    if 'summed_image' not in obslist[0].meta:
+                        band_pars = self.get_object_band_pars(
+                            pars,
+                            iobj,
+                            band,
+                        )
+
+                        central_model = self.make_model(band_pars)
+
+                    else:
+
+                        flux = self.get_object_band_flux(
+                            pars,
+                            iobj,
+                            band,
+                        )
+
+                    for obs in obslist:
+
+                        meta    = obs.meta
+                        model   = meta['model']
+                        ierr    = meta['ierr']
+
+                        if 'summed_image' not in meta:
+
+                            central_image = model.copy()
+                            convolved_model = galsim.Convolve(
+                                central_model,
+                                obs.psf.meta['ii'],
+                            )
+                            convolved_model.drawImage(
+                                image=central_image,
+                                method='no_pixel',
+                            )
+
+                            maxrad = self._get_maxrad(obs)
+                            nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad)
+
+                            central_image = central_image.array
+                            summed_image = central_image.copy()
+
+                            nbr_images = []
+                            for nbr_model in nbr_models:
+                                nbr_image = model.copy()
+
+                                convolved_model = galsim.Convolve(
+                                    nbr_model,
+                                    obs.psf.meta['ii'],
+                                )
+                                convolved_model.drawImage(
+                                    image=nbr_image,
+                                    method='no_pixel',
+                                )
+
+                                nbr_image = nbr_image.array
+                                nbr_images.append( nbr_image )
+
+                                summed_image += nbr_image
+
+                            meta['central_image'] = central_image
+                            meta['nbr_images'] = nbr_images
+                            meta['summed_image'] = summed_image
+                        else:
+
+                            central_image = meta['central_image']
+                            summed_image = meta['summed_image']
+
+                            central_image *= flux/central_image.sum()
+                            summed_image[:,:] = central_image
+
+                            maxrad = self._get_maxrad(obs)
+                            if len(meta['nbr_images']) > 0:
+                                nbr_fluxes = \
+                                    self._get_nbr_fluxes(iobj, pars, meta, band, maxrad)
+                                for inbr,nbr_image in enumerate(meta['nbr_images']):
+                                    nbr_flux = nbr_fluxes[inbr]
+
+                                    nbr_image *= nbr_flux/nbr_image.sum()
+
+                                    summed_image[:,:] += nbr_image
+
+
+                        # (model-data)/err
+                        tfdiff = summed_image
+                        tfdiff -= obs.image
+                        tfdiff *= ierr
+
+                        # now copy into the full fdiff array
+                        imsize = tfdiff.size
+
+                        fdiff[start:start+imsize] = tfdiff.ravel()
+
+                        start += imsize
+
+        except (GMixRangeError,GalSimFFTSizeError) as err:
+            fdiff[:] = LOWVAL
+
+        return fdiff
+
+
+    def get_object_band_flux(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+
+        ind = iobj*self.npars_per + band
+
+        flux = flux_pars[ind]
+
+        if flux < 0.0:
+            raise GMixRangeError('flux less than zero')
+
+        return flux
+
+    def get_object_band_pars(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+
+        flux = self.get_object_band_flux(flux_pars, iobj, band)
+
+        #pars = self.list_of_obs[iobj].meta['input_model_pars']
+        #pars = pars[0:self.nband_pars_per_full].copy()
+
+        flags = self.list_of_obs[iobj].meta['input_flags']
+        if flags == 0:
+            pars = self.list_of_obs[iobj].meta['input_model_pars']
+            pars = pars[0:self.nband_pars_per_full].copy()
+        else:
+            print('    filling a star for missing pars')
+            pars = np.zeros(self.nband_pars_per_full)
+            pars[4] = 1.0e-5
+
+        pars[-1] = flux
+        return pars
+
+    def _get_nbr_fluxes(self, iobj, pars, meta, band, maxrad):
+        fluxes=[]
+        for nbr in meta['nbr_data']:
+            #assert nbr['index'] != iobj
+            flux = self.get_object_band_flux(
+                pars,
+                nbr['index'],
+                band,
+            )
+            fluxes.append(flux)
+
+        return fluxes
+
+    def _fill_priors(self, pars, fdiff, start):
+        """
+        no priors for this fitter
+        """
+        return start
+
+    def get_object_result(self, i):
+        """
+        get a result dict for a single object
+        """
+        pars=self._result['pars']
+        pars_cov=self._result['pars_cov']
+
+        pres=self.get_object_psf_stats(i)
+
+        res={}
+
+        res['nband'] = self.nband
+        res['psf_g'] = pres['g']
+        res['psf_T'] = pres['T']
+
+        res['nfev']     = self._result['nfev']
+        res['s2n']      = self.get_object_s2n(i)
+        res['pars']     = self.get_object_pars(pars,i)
+        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+
+        res['flux'] = res['pars'].copy()
+        res['flux_cov'] = res['pars_cov'].copy()
+        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+
+        return res
+
+class GSMOFFluxReRender(GSMOF):
+    """
+    flux only fitter
+    """
+    def __init__(self, list_of_obs, model, **keys):
+
+        self._set_all_obs(list_of_obs)
+        self._setup_nbrs()
+        self.model=model
+
+        self._set_model_maker()
+
+        self.nobj=len(self.list_of_obs)
+
+        self.npars_per = self.nband
+        self.nband_pars_per=1
+
+        # fluxes for each object
+        self.n_prior_pars=0
+
+        self.npars = self.nobj*self.npars_per
+
+        if model=='bdf':
+            self.nband_pars_per_full=7
+        else:
+            self.nband_pars_per_full=6
+
+        self.lm_pars={}
+        self.lm_pars.update(DEFAULT_LM_PARS)
+
+        lm_pars=keys.get('lm_pars',None)
+        if lm_pars is not None:
+            self.lm_pars.update(lm_pars)
+
+        self._init_model_images()
+        self._set_fdiff_size()
+
+
+    def get_object_band_pars(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+        nbper=self.nband_pars_per
+
+        ind = iobj*self.npars_per + band
+
+        flux = flux_pars[ind]
+
+        if flux < 0.0:
+            raise GMixRangeError('flux less than zero')
+
+        flags = self.list_of_obs[iobj].meta['input_flags']
+        if flags == 0:
+            pars = self.list_of_obs[iobj].meta['input_model_pars']
+            pars = pars[0:self.nband_pars_per_full].copy()
+        else:
+            print('    filling a star for missing pars')
+            pars = np.zeros(self.nband_pars_per_full)
+            pars[4] = 1.0e-5
+
+        pars[-1] = flux
+        #ngmix.print_pars(pars, front='pars: ')
+        #pars[0:0+2] += 0.012
+        #print('iobj: %d band: %d flux: %g' % (iobj, band, flux))
+        return pars
+
+    def _fill_priors(self, pars, fdiff, start):
+        """
+        no priors for this fitter
+        """
+        return start
+
+    def get_object_result(self, i):
+        """
+        get a result dict for a single object
+        """
+        pars=self._result['pars']
+        pars_cov=self._result['pars_cov']
+
+        pres=self.get_object_psf_stats(i)
+
+        res={}
+
+        res['nband'] = self.nband
+        res['psf_g'] = pres['g']
+        res['psf_T'] = pres['T']
+
+        res['nfev']     = self._result['nfev']
+        res['s2n']      = self.get_object_s2n(i)
+        res['pars']     = self.get_object_pars(pars,i)
+        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+
+        res['flux'] = res['pars'].copy()
+        res['flux_cov'] = res['pars_cov'].copy()
+        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+
+        return res
 
 
 def make_bdf(half_light_radius=None,
