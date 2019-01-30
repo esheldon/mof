@@ -127,9 +127,10 @@ class KGSMOF(MOFStamps):
                         band,
                     )
 
-                    central_model = self.make_model(band_pars)
 
                     for obs in obslist:
+
+                        central_model = self._make_fully_shifted_model(band_pars, obs)
 
                         meta    = obs.meta
                         kimage  = meta['kimage']
@@ -138,7 +139,7 @@ class KGSMOF(MOFStamps):
                         psf_ii  = meta['psf_ii']
 
                         maxrad = self._get_maxrad(obs)
-                        nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad)
+                        nbr_models = self._get_nbr_models(iobj,pars, meta, band, maxrad, obs)
                         if len(nbr_models) > 0:
                             all_models=[central_model] + nbr_models
                             
@@ -174,6 +175,16 @@ class KGSMOF(MOFStamps):
 
         return fdiff
 
+    def _make_fully_shifted_model(self, band_pars, obs):
+        """
+        get the model with the relative shift, but also the shift
+        for jacobian center
+        """
+        central_model0 = self.make_model(band_pars)
+        dv, du = self._get_jcen_shift(obs)
+        central_model = central_model0.shift(du, dv)
+        return central_model
+
     def _get_maxrad(self, obs):
         """
         criteria for now is that the object is within
@@ -185,7 +196,7 @@ class KGSMOF(MOFStamps):
         scale=obs.meta['scale']
         return obs.image.shape[0]*scale*0.5
 
-    def _get_nbr_models(self, iobj, pars, meta, band, maxrad):
+    def _get_nbr_models(self, iobj, pars, meta, band, maxrad, obs):
         #return []
         models=[]
         for nbr in meta['nbr_data']:
@@ -207,10 +218,29 @@ class KGSMOF(MOFStamps):
             if rad_offset < maxrad:
                 nbr_pars[0] += nbr['v0']
                 nbr_pars[1] += nbr['u0']
-                nbr_model = self.make_model(nbr_pars)
+                #nbr_model = self.make_model(nbr_pars)
+                nbr_model = self._make_fully_shifted_model(nbr_pars, obs)
                 models.append(nbr_model)
 
         return models
+
+    def _get_jcen_shift(self, obs):
+        """
+        for galsim need an extra shift for the fact that the jacobian
+        center may be off from the canonical center
+        """
+        jac = obs.jacobian
+        cen = jac.cen
+        # now see how far we need to shift in v,u to get the
+        # given row offset from the canonical center
+        ccen = (np.array(obs.image.shape)-1.0)/2.0
+        cdiff = cen - ccen
+        dv, du = jac.get_vu(cen[0] + cdiff[0], cen[1] + cdiff[1])
+        #print('ccen:',ccen)
+        #print('cen:',cen)
+        #print('cdiff:',cdiff)
+        #print('dv,du:',dv,du)
+        return dv, du
 
     def _fill_priors(self, pars, fdiff, start):
         """
@@ -530,11 +560,11 @@ class KGSMOF(MOFStamps):
             band,
         )
 
-        central_model = self.make_model(band_pars)
+        central_model = self._make_fully_shifted_model(band_pars, obs)
 
         if include_nbrs:
             maxrad = self._get_maxrad(obs)
-            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad)
+            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad, obs)
         else:
             nbr_models=[]
 
@@ -588,16 +618,17 @@ class GSMOF(KGSMOF):
                         band,
                     )
 
-                    central_model = self.make_model(band_pars)
-
                     for obs in obslist:
+
 
                         meta    = obs.meta
                         model   = meta['model']
                         ierr    = meta['ierr']
 
+                        central_model = self._make_fully_shifted_model(band_pars, obs)
+
                         maxrad = self._get_maxrad(obs)
-                        nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad)
+                        nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad, obs)
 
                         if len(nbr_models) > 0:
                             all_models=[central_model] + nbr_models
@@ -735,11 +766,11 @@ class GSMOF(KGSMOF):
             band,
         )
 
-        central_model = self.make_model(band_pars)
+        central_model = self._make_fully_shifted_model(band_pars, obs)
 
         if include_nbrs:
             maxrad=self._get_maxrad(obs)
-            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad)
+            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad, obs)
         else:
             nbr_models=[]
 
@@ -826,8 +857,6 @@ class GSMOFFlux(GSMOF):
                             band,
                         )
 
-                        central_model = self.make_model(band_pars)
-
                     else:
 
                         flux = self.get_object_band_flux(
@@ -844,6 +873,8 @@ class GSMOFFlux(GSMOF):
 
                         if 'summed_image' not in meta:
 
+                            central_model = self._make_fully_shifted_model(band_pars, obs)
+
                             central_image = model.copy()
                             convolved_model = galsim.Convolve(
                                 central_model,
@@ -855,7 +886,7 @@ class GSMOFFlux(GSMOF):
                             )
 
                             maxrad = self._get_maxrad(obs)
-                            nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad)
+                            nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad, obs)
 
                             central_image = central_image.array
                             summed_image = central_image.copy()
