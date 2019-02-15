@@ -911,13 +911,34 @@ class MOFStamps(MOF):
             start,
         )
 
-    def make_image(self, index, band=0, obsnum=0):
+    def make_image(self, index, band=0, obsnum=0, include_nbrs=False):
         """
         make an image for the given band and observation number
         """
         gm = self.get_convolved_gmix(index, band=band, obsnum=obsnum)
         obs = self.list_of_obs[index][band][obsnum]
-        return gm.make_image(obs.image.shape, jacobian=obs.jacobian)
+        im = gm.make_image(obs.image.shape, jacobian=obs.jacobian)
+
+        if include_nbrs:
+            pars = self.get_result()['pars']
+            for nbr in obs.meta['nbr_data']:
+                nbr_pars = self.get_object_band_pars(
+                    pars,
+                    nbr['index'],
+                    band,
+                )
+                # the current pars [v,u,..] are relative to
+                # fiducial position.  we need to add these to
+                # the fiducial for the rendering within
+                # the stamp of the central
+                nbr_pars[0] += nbr['v0']
+                nbr_pars[1] += nbr['u0']
+                ngm0 = self._make_model(nbr_pars)
+                ngm = ngm0.convolve(obs.psf.gmix)
+                nim = ngm.make_image(obs.image.shape, jacobian=obs.jacobian)
+                im += nim
+
+        return im
 
 
     def get_convolved_gmix(self, index, band=0, obsnum=0, pars=None):
