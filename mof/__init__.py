@@ -1,3 +1,5 @@
+__version__ = 'v0.9.0'
+
 from . import moflib
 from .moflib import MOF, MOFStamps
 from .galsimfit import GSMOF, KGSMOF
