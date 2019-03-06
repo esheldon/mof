@@ -806,8 +806,7 @@ class MOFStamps(MOF):
         for mbobs in self.list_of_obs:
             for obs_list in mbobs:
                 for obs in obs_list:
-                    shape=obs.image.shape
-                    totpix += shape[0]*shape[1]
+                    totpix = obs.pixels.size
 
         self.totpix=totpix
 
