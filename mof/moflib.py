@@ -100,6 +100,7 @@ class MOF(LMSimple):
             self._calc_fdiff,
             guess,
             self.n_prior_pars,
+            bounds=self.prior.bounds,
             **self.lm_pars
         )
 
@@ -543,6 +544,7 @@ class MOFStamps(MOF):
             self._calc_fdiff,
             guess,
             self.n_prior_pars,
+            bounds=self.prior.bounds,
             **self.lm_pars
         )
 

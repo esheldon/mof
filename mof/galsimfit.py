@@ -91,6 +91,7 @@ class KGSMOF(MOFStamps):
             guess,
             self.n_prior_pars,
             k_space=True,
+            bounds=self.prior.bounds,
             **self.lm_pars
         )
 
