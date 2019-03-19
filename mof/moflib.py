@@ -96,11 +96,15 @@ class MOF(LMSimple):
 
         self._make_lists()
 
+        bounds=self.prior.bounds
+        if bounds is not None:
+            bounds=bounds*nobj
+
         result = run_leastsq(
             self._calc_fdiff,
             guess,
             self.n_prior_pars,
-            bounds=self.prior.bounds,
+            bounds=bounds,
             **self.lm_pars
         )
 
@@ -540,11 +544,15 @@ class MOFStamps(MOF):
 
         self._setup_data(guess)
 
+        bounds=self.prior.bounds
+        if bounds is not None:
+            bounds=bounds*nobj
+
         result = run_leastsq(
             self._calc_fdiff,
             guess,
             self.n_prior_pars,
-            bounds=self.prior.bounds,
+            bounds=bounds,
             **self.lm_pars
         )
 
