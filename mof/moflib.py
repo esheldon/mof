@@ -443,6 +443,8 @@ class MOF(LMSimple):
         res['T_ratio']  = res['T']/res['psf_T']
 
         if self.model_name=='bd':
+            res['logTratio'] = res['pars'][5]
+            res['logTratio_err'] = np.sqrt(res['pars_cov'][5,5])
             res['fracdev'] = res['pars'][6]
             res['fracdev_err'] = np.sqrt(res['pars_cov'][6,6])
             flux_start=7
