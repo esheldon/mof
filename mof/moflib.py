@@ -49,8 +49,14 @@ class MOF(LMSimple):
         assert self.prior is not None,"send a prior"
         self.nobj=nobj
 
+        if model=='bd':
+            self.npars_per = 7+self.nband
+            self.nband_pars_per=8
 
-        if model=='bdf':
+            # center1 + center2 + shape + T + log10Trat +fracdev + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + 1 + self.nband)
+
+        elif model=='bdf':
             self.npars_per = 6+self.nband
             self.nband_pars_per=7
 
@@ -436,7 +442,11 @@ class MOF(LMSimple):
         res['T_err']    = np.sqrt(res['pars_cov'][4,4])
         res['T_ratio']  = res['T']/res['psf_T']
 
-        if self.model_name=='bdf':
+        if self.model_name=='bd':
+            res['fracdev'] = res['pars'][6]
+            res['fracdev_err'] = np.sqrt(res['pars_cov'][6,6])
+            flux_start=7
+        elif self.model_name=='bdf':
             res['fracdev'] = res['pars'][5]
             res['fracdev_err'] = np.sqrt(res['pars_cov'][5,5])
             flux_start=6
@@ -459,7 +469,9 @@ class MOF(LMSimple):
         pars     = self.get_object_pars(allpars,i)
         pars_cov = self.get_object_cov(allpars_cov, i)
 
-        if self.model_name=='bdf':
+        if self.model_name=='bd':
+            flux_start=7
+        elif self.model_name=='bdf':
             flux_start=6
         else:
             flux_start=5
@@ -503,7 +515,14 @@ class MOFStamps(MOF):
         self.nobj=len(self.list_of_obs)
         self._set_totpix()
 
-        if model=='bdf':
+        if model=='bd':
+            self.npars_per = 7+self.nband
+            self.nband_pars_per=8
+
+            # center1 + center2 + shape + T + logTratio + fracdev + fluxes for each object
+            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + 1 + self.nband)
+
+        elif model=='bdf':
             self.npars_per = 6+self.nband
             self.nband_pars_per=7
 
@@ -615,16 +634,6 @@ class MOFStamps(MOF):
 
         res0['g'] = g1avg, g2avg
         res0['g_cov'] = np.diag([g1var, g2var])
-
-        """
-        print('g1')
-        print(g1)
-        print(g1avg)
-        print('g2')
-        print(g2)
-        print(g2avg)
-        print()
-        """
 
         return res0
 
@@ -1232,41 +1241,6 @@ class GMixModelMulti(GMix):
                 gpars,
             )
 
-    '''
-    def make_image(self, band, fast_exp=False):
-        """
-        render the full model
-        """
-        obs=self.obs[band][0]
-
-        res=self.get_result()
-        if res['flags'] != 0:
-            raise RuntimeError("can't render a failure")
-        dims=obs.image.shape
-
-        image=np.zeros(dims, dtype='f8')
-
-        coords=make_coords(image.shape, obs.jacobian)
-
-        gmall=self.get_data()
-
-        ng=self._ngauss_per
-        for i in range(self._nobj):
-            beg=i*ng
-            end=(i+1)*ng
-
-            # should be a reference
-            gm = gmall[beg:end]
-
-            ngmix.render_nb.render(
-                gm,
-                coords,
-                image,
-                fast_exp=fast_exp,
-            )
-
-        return image
-    '''
 
 def get_full_image_guesses(objects,
                            nband,
