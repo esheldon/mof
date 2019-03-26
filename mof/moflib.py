@@ -10,7 +10,7 @@ from __future__ import print_function
 import numpy as np
 from numpy import dot
 import ngmix
-from ngmix.gmix import GMix, GMixModel
+from ngmix.gmix import GMix, GMixModel, GMixBDF
 from ngmix.fitting import LMSimple
 from ngmix.fitting import run_leastsq
 from ngmix.gmix import (
@@ -1057,7 +1057,11 @@ class MOFStamps(MOF):
         """
         generate a gaussian mixture
         """
-        return GMixModel(band_pars, self.model)
+
+        if self.model_name == 'bdf':
+            return GMixBDF(pars=band_pars)
+        else:
+            return GMixModel(band_pars, self.model)
 
     def _set_all_obs(self, list_of_obs):
 
