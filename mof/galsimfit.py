@@ -86,11 +86,14 @@ class KGSMOF(MOFStamps):
         if nobj != self.nobj or nleft != 0:
             raise ValueError("bad guess size: %d" % guess.size)
 
+        bounds = self._get_bounds(nobj)
+
         result = run_leastsq(
             self._calc_fdiff,
             guess,
             self.n_prior_pars,
             k_space=True,
+            bounds=bounds,
             **self.lm_pars
         )
 
@@ -686,7 +689,7 @@ class GSMOF(KGSMOF):
         for mbobs in self.list_of_obs:
             for obs_list in mbobs:
                 for obs in obs_list:
-                    totpix += obs.image.size
+                    totpix += obs.pixels.size
 
         self.totpix=totpix
 
