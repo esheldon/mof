@@ -86,9 +86,7 @@ class KGSMOF(MOFStamps):
         if nobj != self.nobj or nleft != 0:
             raise ValueError("bad guess size: %d" % guess.size)
 
-        bounds=self.prior.bounds
-        if bounds is not None:
-            bounds=bounds*nobj
+        bounds = self._get_bounds(nobj)
 
         result = run_leastsq(
             self._calc_fdiff,

@@ -102,9 +102,7 @@ class MOF(LMSimple):
 
         self._make_lists()
 
-        bounds=self.prior.bounds
-        if bounds is not None:
-            bounds=bounds*nobj
+        bounds = self._get_bounds(nobj)
 
         result = run_leastsq(
             self._calc_fdiff,
@@ -120,6 +118,18 @@ class MOF(LMSimple):
             result.update(stat_dict)
 
         self._result=result
+
+    def _get_bounds(self, nobj):
+        """
+        get bounds on parameters
+        """
+        bounds=None
+        if self.prior is not None:
+            if hasattr(self.prior,'bounds'):
+                bounds=self.prior.bounds
+                bounds = bounds*nobj
+
+        return bounds
 
     def get_nobj(self):
         """
@@ -565,9 +575,7 @@ class MOFStamps(MOF):
 
         self._setup_data(guess)
 
-        bounds=self.prior.bounds
-        if bounds is not None:
-            bounds=bounds*nobj
+        bounds = self._get_bounds(nobj)
 
         result = run_leastsq(
             self._calc_fdiff,
