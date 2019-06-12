@@ -21,16 +21,16 @@ from ngmix.gmix import (
 )
 from ngmix.observation import (
     Observation, ObsList, MultiBandObsList,
-    get_mb_obs,get_kmb_obs,
+    get_mb_obs,
 )
-from ngmix.gmix import GMixList,MultiBandGMixList
+from ngmix.gmix import GMixList, MultiBandGMixList
 from ngmix.gexceptions import GMixRangeError
 from ngmix.priors import LOWVAL
 from . import priors
 
 # weaker than usual
-DEFAULT_LM_PARS={
-    'maxfev':2000,
+DEFAULT_LM_PARS = {
+    'maxfev': 2000,
     'ftol': 1.0e-5,
     'xtol': 1.0e-5,
 }
@@ -44,53 +44,51 @@ class MOF(LMSimple):
         """
         currently model is same for all objects
         """
-        super(LMSimple,self).__init__(obs, model, **keys)
+        super(LMSimple, self).__init__(obs, model, **keys)
 
-        assert self.prior is not None,"send a prior"
-        self.nobj=nobj
+        assert self.prior is not None, 'send a prior'
+        self.nobj = nobj
 
-        if model=='bd':
+        if model == 'bd':
             self.npars_per = 7+self.nband
-            self.nband_pars_per=8
+            self.nband_pars_per = 8
 
-            # center1 + center2 + shape + T + log10Trat +fracdev + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + 1 + self.nband)
+            # center1 + center2 + shape + T + log10Trat +fracdev + fluxes
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + 1 + 1 + self.nband)
 
-        elif model=='bdf':
+        elif model == 'bdf':
             self.npars_per = 6+self.nband
-            self.nband_pars_per=7
+            self.nband_pars_per = 7
 
             # center1 + center2 + shape + T + fracdev + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
         else:
             self.npars_per = 5+self.nband
-            self.nband_pars_per=6
-            self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+            self.nband_pars_per = 6
+            self._band_pars = np.zeros(self.nband_pars_per*self.nobj)
 
             # center1 + center2 + shape + T + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + self.nband)
 
-        self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+        self._band_pars = np.zeros(self.nband_pars_per*self.nobj)
 
         self._set_fdiff_size()
 
         self.npars = self.nobj*self.npars_per
 
-
-        self.lm_pars={}
+        self.lm_pars = {}
         self.lm_pars.update(DEFAULT_LM_PARS)
 
-        lm_pars=keys.get('lm_pars',None)
+        lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
-
 
     def go(self, guess):
         """
         Run leastsq and set the result
         """
 
-        guess=np.array(guess,dtype='f8',copy=False)
+        guess = np.array(guess, dtype='f8', copy=False)
 
         # assume 5+nband pars per object
         nobj = guess.size//self.npars_per
@@ -113,20 +111,20 @@ class MOF(LMSimple):
         )
 
         result['model'] = self.model_name
-        if result['flags']==0:
-            stat_dict=self.get_fit_stats(result['pars'])
+        if result['flags'] == 0:
+            stat_dict = self.get_fit_stats(result['pars'])
             result.update(stat_dict)
 
-        self._result=result
+        self._result = result
 
     def _get_bounds(self, nobj):
         """
         get bounds on parameters
         """
-        bounds=None
+        bounds = None
         if self.prior is not None:
-            if hasattr(self.prior,'bounds'):
-                bounds=self.prior.bounds
+            if hasattr(self.prior, 'bounds'):
+                bounds = self.prior.bounds
                 bounds = bounds*nobj
 
         return bounds
@@ -137,7 +135,11 @@ class MOF(LMSimple):
         """
         return self.nobj
 
-    def make_corrected_obs(self, index=None, band=None, obsnum=None, recenter=True):
+    def make_corrected_obs(self,
+                           index=None,
+                           band=None,
+                           obsnum=None,
+                           recenter=True):
         """
         get observation(s) for the given object and band
         with all the neighbors subtracted from the image
@@ -156,9 +158,9 @@ class MOF(LMSimple):
         """
 
         if index is None:
-            mbobs_list=[]
-            for index in xrange(self.nobj):
-                mbobs=self.make_corrected_obs(
+            mbobs_list = []
+            for index in range(self.nobj):
+                mbobs = self.make_corrected_obs(
                     index=index,
                     band=band,
                     obsnum=obsnum,
@@ -167,12 +169,11 @@ class MOF(LMSimple):
                 mbobs_list.append(mbobs)
             return mbobs_list
 
-
         if band is None:
             # get all bands and epochs
-            output=MultiBandObsList()
+            output = MultiBandObsList()
             for band in range(self.nband):
-                obslist=self.make_corrected_obs(
+                obslist = self.make_corrected_obs(
                     index=index,
                     band=band,
                     recenter=recenter,
@@ -183,7 +184,7 @@ class MOF(LMSimple):
             # band specified, but not the observation, so get all
             # epochs for this band
 
-            output=ObsList()
+            output = ObsList()
 
             nepoch = len(self.obs[band])
             for obsnum in range(nepoch):
@@ -200,19 +201,19 @@ class MOF(LMSimple):
 
             ref_obs = self.obs[band][obsnum]
 
-            image =self.make_corrected_image(index, band=band, obsnum=obsnum)
+            image = self.make_corrected_image(index, band=band, obsnum=obsnum)
 
             if ref_obs.has_psf():
-                po=ref_obs.psf
-                psf_obs=Observation(
+                po = ref_obs.psf
+                psf_obs = Observation(
                     po.image.copy(),
                     weight=po.weight.copy(),
                     jacobian=po.jacobian.copy(),
                 )
                 if po.has_gmix():
-                    psf_obs.gmix =  po.gmix
+                    psf_obs.gmix = po.gmix
             else:
-                psf_obs=None
+                psf_obs = None
 
             # this makes a copy
             jacob = ref_obs.jacobian
@@ -222,7 +223,7 @@ class MOF(LMSimple):
                 gmi = gm.get_one(index)
 
                 # this is v,u
-                v,u = gmi.get_cen()
+                v, u = gmi.get_cen()
                 row, col = jacob.get_rowcol(v, u)
                 jacob.set_cen(row=row, col=col)
 
@@ -253,7 +254,7 @@ class MOF(LMSimple):
         # image
         gm = self.get_gmix(band=band)
         gmi = gm.get_one(index)
-        
+
         if ref_obs.has_psf():
             psf = ref_obs.psf.gmix
             gmi = gmi.convolve(psf)
@@ -278,8 +279,8 @@ class MOF(LMSimple):
         Get linear pars for the specified band
         """
 
-        pars=self._band_pars
-        nbper=self.nband_pars_per
+        pars = self._band_pars
+        nbper = self.nband_pars_per
 
         for i in range(self.nobj):
             # copy cen1,cen2,g1,g2,T
@@ -287,9 +288,9 @@ class MOF(LMSimple):
             # copy cen1,cen2,g1,g2,T,fracdev
 
             # either i*6 or i*7
-            beg=i*nbper
+            beg = i*nbper
             # either 5 or 6
-            end=beg+nbper-1
+            end = beg+nbper-1
 
             ibeg = i*self.npars_per
             iend = ibeg+nbper-1
@@ -297,7 +298,7 @@ class MOF(LMSimple):
             pars[beg:end] = pars_in[ibeg:iend]
 
             # now copy the flux
-            #pars[beg+5] = pars_in[ibeg+5+band]
+            # pars[beg+5] = pars_in[ibeg+5+band]
             pars[end] = pars_in[iend+band]
 
         return pars
@@ -313,9 +314,9 @@ class MOF(LMSimple):
             Band index, default 0
         """
         if pars is None:
-            res=self.get_result()
-            pars=res['pars']
-        band_pars=self.get_band_pars(pars, band)
+            res = self.get_result()
+            pars = res['pars']
+        band_pars = self.get_band_pars(pars, band)
         return self._make_model(band_pars)
 
     def get_convolved_gmix(self, band=0, obsnum=0, pars=None):
@@ -346,12 +347,10 @@ class MOF(LMSimple):
         """
         return GMixModelMulti(band_pars, self.model)
 
-
     def get_object_pars(self, pars_in, iobj):
         """
         extract parameters for the given object
         """
-        nper=self.npars_per
         ibeg = iobj*self.npars_per
         iend = (iobj+1)*self.npars_per
 
@@ -361,7 +360,6 @@ class MOF(LMSimple):
         """
         extract covariance for the given object
         """
-        nper=self.npars_per
         ibeg = iobj*self.npars_per
         iend = (iobj+1)*self.npars_per
 
@@ -369,17 +367,18 @@ class MOF(LMSimple):
 
     def get_object_psf_stats(self, *args, **kw):
         """
-        we have a single psf for full fitter so this needs to be cached only once
+        we have a single psf for full fitter so this needs to be cached only
+        once
         """
-        if not hasattr(self,'_psf_stats'):
-            g1sum=0.0
-            g2sum=0.0
-            Tsum=0.0
-            wsum=0.0
+        if not hasattr(self, '_psf_stats'):
+            g1sum = 0.0
+            g2sum = 0.0
+            Tsum = 0.0
+            wsum = 0.0
 
             for obslist in self.obs:
                 for obs in obslist:
-                    twsum=obs.weight.sum()
+                    twsum = obs.weight.sum()
                     wsum += twsum
 
                     tg1, tg2, tT = obs.psf.gmix.get_g1g2T()
@@ -393,11 +392,11 @@ class MOF(LMSimple):
             T = Tsum/wsum
 
             self._psf_stats = {
-                'g':[g1,g2],
-                'T':T,
+                'g': [g1, g2],
+                'T': T,
             }
 
-        stats={}
+        stats = {}
         stats.update(self._psf_stats)
         return stats
 
@@ -411,7 +410,7 @@ class MOF(LMSimple):
         """
         get results split up for each object
         """
-        if not hasattr(self,'_result_list'):
+        if not hasattr(self, '_result_list'):
             self._make_result_list()
 
         return self._result_list
@@ -420,9 +419,9 @@ class MOF(LMSimple):
         """
         get fit statistics for each object separately
         """
-        reslist=[]
-        for i in xrange(self.nobj):
-            res=self.get_object_result(i)
+        reslist = []
+        for i in range(self.nobj):
+            res = self.get_object_result(i)
             reslist.append(res)
 
         self._result_list = reslist
@@ -431,42 +430,42 @@ class MOF(LMSimple):
         """
         get a result dict for a single object
         """
-        pars=self._result['pars']
-        pars_cov=self._result['pars_cov']
+        pars = self._result['pars']
+        pars_cov = self._result['pars_cov']
 
-        pres=self.get_object_psf_stats(i)
+        pres = self.get_object_psf_stats(i)
 
-        res={}
+        res = {}
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev']     = self._result['nfev']
-        res['s2n']      = self.get_object_s2n(i)
-        res['pars']     = self.get_object_pars(pars,i)
+        res['nfev'] = self._result['nfev']
+        res['s2n'] = self.get_object_s2n(i)
+        res['pars'] = self.get_object_pars(pars, i)
         res['pars_cov'] = self.get_object_cov(pars_cov, i)
-        res['g']        = res['pars'][2:2+2].copy()
-        res['g_cov']    = res['pars_cov'][2:2+2,2:2+2].copy()
-        res['T']        = res['pars'][4]
-        res['T_err']    = np.sqrt(res['pars_cov'][4,4])
-        res['T_ratio']  = res['T']/res['psf_T']
+        res['g'] = res['pars'][2:2+2].copy()
+        res['g_cov'] = res['pars_cov'][2:2+2, 2:2+2].copy()
+        res['T'] = res['pars'][4]
+        res['T_err'] = np.sqrt(res['pars_cov'][4, 4])
+        res['T_ratio'] = res['T']/res['psf_T']
 
-        if self.model_name=='bd':
+        if self.model_name == 'bd':
             res['logTratio'] = res['pars'][5]
-            res['logTratio_err'] = np.sqrt(res['pars_cov'][5,5])
+            res['logTratio_err'] = np.sqrt(res['pars_cov'][5, 5])
             res['fracdev'] = res['pars'][6]
-            res['fracdev_err'] = np.sqrt(res['pars_cov'][6,6])
-            flux_start=7
-        elif self.model_name=='bdf':
+            res['fracdev_err'] = np.sqrt(res['pars_cov'][6, 6])
+            flux_start = 7
+        elif self.model_name == 'bdf':
             res['fracdev'] = res['pars'][5]
-            res['fracdev_err'] = np.sqrt(res['pars_cov'][5,5])
-            flux_start=6
+            res['fracdev_err'] = np.sqrt(res['pars_cov'][5, 5])
+            flux_start = 6
         else:
-            flux_start=5
+            flux_start = 5
 
         res['flux'] = res['pars'][flux_start:]
-        res['flux_cov'] = res['pars_cov'][flux_start:,flux_start:]
+        res['flux_cov'] = res['pars_cov'][flux_start:, flux_start:]
         res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
 
         return res
@@ -476,20 +475,20 @@ class MOF(LMSimple):
         we don't have a stamp over which to integrate, so we use
         the total flux s/n
         """
-        allpars=self._result['pars']
-        allpars_cov=self._result['pars_cov']
-        pars     = self.get_object_pars(allpars,i)
+        allpars = self._result['pars']
+        allpars_cov = self._result['pars_cov']
+        pars = self.get_object_pars(allpars, i)
         pars_cov = self.get_object_cov(allpars_cov, i)
 
-        if self.model_name=='bd':
-            flux_start=7
-        elif self.model_name=='bdf':
-            flux_start=6
+        if self.model_name == 'bd':
+            flux_start = 7
+        elif self.model_name == 'bdf':
+            flux_start = 6
         else:
-            flux_start=5
+            flux_start = 5
 
         flux = pars[flux_start:]
-        flux_cov = pars_cov[flux_start:,flux_start:]
+        flux_cov = pars_cov[flux_start:, flux_start:]
 
         fones = np.ones(flux.size)
         flux_cov_inv = np.linalg.inv(flux_cov)
@@ -510,53 +509,53 @@ class MOF(LMSimple):
 class MOFStamps(MOF):
     def __init__(self, list_of_obs, model, **keys):
         """
-        list_of_obs is not an ObsList, it is a python list of 
+        list_of_obs is not an ObsList, it is a python list of
         Observation/ObsList/MultiBandObsList
         """
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
-        self.model=model
+        self.model = model
 
-        self.model=ngmix.gmix.get_model_num(model)
-        self.model_name=ngmix.gmix.get_model_name(self.model)
+        self.model = ngmix.gmix.get_model_num(model)
+        self.model_name = ngmix.gmix.get_model_name(self.model)
 
-        self.prior = keys.get('prior',None)
+        self.prior = keys.get('prior', None)
 
-        assert self.prior is not None,"send a prior"
-        self.nobj=len(self.list_of_obs)
+        assert self.prior is not None, "send a prior"
+        self.nobj = len(self.list_of_obs)
         self._set_totpix()
 
-        if model=='bd':
+        if model == 'bd':
             self.npars_per = 7+self.nband
-            self.nband_pars_per=8
+            self.nband_pars_per = 8
 
-            # center1 + center2 + shape + T + logTratio + fracdev + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + 1 + self.nband)
+            # center1 + center2 + shape + T + logTratio + fracdev + fluxes for
+            # each object
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + 1 + 1 + self.nband)
 
-        elif model=='bdf':
+        elif model == 'bdf':
             self.npars_per = 6+self.nband
-            self.nband_pars_per=7
+            self.nband_pars_per = 7
 
             # center1 + center2 + shape + T + fracdev + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
         else:
             self.npars_per = 5+self.nband
-            self.nband_pars_per=6
-            self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+            self.nband_pars_per = 6
+            self._band_pars = np.zeros(self.nband_pars_per*self.nobj)
 
             # center1 + center2 + shape + T + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + self.nband)
 
-        #self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
         self._set_fdiff_size()
 
         self.npars = self.nobj*self.npars_per
 
-        self.lm_pars={}
+        self.lm_pars = {}
         self.lm_pars.update(DEFAULT_LM_PARS)
 
-        lm_pars=keys.get('lm_pars',None)
+        lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
@@ -565,7 +564,7 @@ class MOFStamps(MOF):
         Run leastsq and set the result
         """
 
-        guess=np.array(guess,dtype='f8',copy=False)
+        guess = np.array(guess, dtype='f8', copy=False)
 
         # assume 5+nband pars per object
         nobj = guess.size//self.npars_per
@@ -586,11 +585,11 @@ class MOFStamps(MOF):
         )
 
         result['model'] = self.model_name
-        if result['flags']==0:
-            stat_dict=self.get_fit_stats(result['pars'])
+        if result['flags'] == 0:
+            stat_dict = self.get_fit_stats(result['pars'])
             result.update(stat_dict)
 
-        self._result=result
+        self._result = result
 
     def get_result_averaged_shapes(self):
         """
@@ -598,25 +597,23 @@ class MOFStamps(MOF):
         of the parameters yet, just copying first
         object
         """
-        res0=self.get_object_result(0)
-        if self.nobj==1:
+        res0 = self.get_object_result(0)
+        if self.nobj == 1:
             return res0
 
-        res=self.get_result()
+        res = self.get_result()
 
-        pars=res['pars']
-        pcov=res['pars_cov']
-
-        ng = self.nobj*2
+        pars = res['pars']
+        pcov = res['pars_cov']
 
         # do separately for now
         g1 = np.zeros(self.nobj)
-        g1cov = np.zeros( (self.nobj, self.nobj) )
+        g1cov = np.zeros((self.nobj, self.nobj))
         g2 = np.zeros(self.nobj)
-        g2cov = np.zeros( (self.nobj, self.nobj) )
+        g2cov = np.zeros((self.nobj, self.nobj))
 
-        nper=self.npars_per
-        for i in xrange(self.nobj):
+        nper = self.npars_per
+        for i in range(self.nobj):
 
             ig1p = i*nper + 2
             ig2p = i*nper + 2 + 1
@@ -624,7 +621,7 @@ class MOFStamps(MOF):
             g1[i] = pars[ig1p]
             g2[i] = pars[ig2p]
 
-            for j in xrange(self.nobj):
+            for j in range(self.nobj):
 
                 jg1p = j*nper + 2
                 jg2p = j*nper + 2 + 1
@@ -641,7 +638,6 @@ class MOFStamps(MOF):
         g1avg = dot(gones, dot(g1cov_inv, g1))*g1var
         g2avg = dot(gones, dot(g2cov_inv, g2))*g2var
 
-
         res0['g'] = g1avg, g2avg
         res0['g_cov'] = np.diag([g1var, g2var])
 
@@ -652,10 +648,10 @@ class MOFStamps(MOF):
         get the s/n for the given object.  This uses just the model
         to calculate the s/n, but does use the full weight map
         """
-        s2n_sum=0.0
-        mbobs=self.list_of_obs[i]
-        for band,obslist in enumerate(mbobs):
-            for obsnum,obs in enumerate(obslist):
+        s2n_sum = 0.0
+        mbobs = self.list_of_obs[i]
+        for band, obslist in enumerate(mbobs):
+            for obsnum, obs in enumerate(obslist):
                 gm = self.get_convolved_gmix(i, band=band, obsnum=obsnum)
                 s2n_sum += gm.get_model_s2n_sum(obs)
 
@@ -665,15 +661,15 @@ class MOFStamps(MOF):
         """
         each object can have different psf for stamps version
         """
-        g1sum=0.0
-        g2sum=0.0
-        Tsum=0.0
-        wsum=0.0
+        g1sum = 0.0
+        g2sum = 0.0
+        Tsum = 0.0
+        wsum = 0.0
 
-        mbobs=self.list_of_obs[i]
-        for band,obslist in enumerate(mbobs):
-            for obsnum,obs in enumerate(obslist):
-                twsum=obs.weight.sum()
+        mbobs = self.list_of_obs[i]
+        for band, obslist in enumerate(mbobs):
+            for obsnum, obs in enumerate(obslist):
+                twsum = obs.weight.sum()
                 wsum += twsum
 
                 tg1, tg2, tT = obs.psf.gmix.get_g1g2T()
@@ -687,10 +683,9 @@ class MOFStamps(MOF):
         T = Tsum/wsum
 
         return {
-            'g':[g1,g2],
-            'T':T,
+            'g': [g1, g2],
+            'T': T,
         }
-
 
     def make_corrected_obs(self, index=None, band=None, obsnum=None):
         """
@@ -712,11 +707,10 @@ class MOFStamps(MOF):
             epoch/observation
         """
 
-
         if index is None:
-            mbobs_list=[]
-            for index in xrange(self.nobj):
-                mbobs=self.make_corrected_obs(
+            mbobs_list = []
+            for index in range(self.nobj):
+                mbobs = self.make_corrected_obs(
                     index=index,
                     band=band,
                     obsnum=obsnum,
@@ -726,26 +720,26 @@ class MOFStamps(MOF):
 
         if band is None:
             # get all bands and epochs
-            output=MultiBandObsList()
+            output = MultiBandObsList()
             for band in range(self.nband):
-                obslist=self.make_corrected_obs(
+                obslist = self.make_corrected_obs(
                     index=index,
                     band=band,
                 )
                 output.append(obslist)
 
             all_pars = self._result['pars']
-            pars = self.get_object_pars(all_pars,index)
+            pars = self.get_object_pars(all_pars, index)
             output.meta['fit_pars'] = pars
 
         elif obsnum is None:
             # band specified, but not the observation, so get all
             # epochs for this band
 
-            output=ObsList()
+            output = ObsList()
 
             obslist = self.list_of_obs[index][band]
-            nepoch = len(obslist) 
+            nepoch = len(obslist)
             for obsnum in range(nepoch):
                 obs = self.make_corrected_obs(
                     index=index,
@@ -759,28 +753,27 @@ class MOFStamps(MOF):
 
             ref_obs = self.list_of_obs[index][band][obsnum]
 
-            image =self.make_corrected_image(index, band=band, obsnum=obsnum)
+            image = self.make_corrected_image(index, band=band, obsnum=obsnum)
 
             output = ref_obs.copy()
             output.image = image
 
         return output
 
- 
     def make_corrected_image(self, index, band=0, obsnum=0):
         """
         get an observation for the given object and band
         with all the neighbors subtracted from the image
         """
-        pars=self.get_result()['pars']
+        pars = self.get_result()['pars']
 
         ref_obs = self.list_of_obs[index][band][obsnum]
-        psf_gmix=ref_obs.psf.gmix
-        jacob=ref_obs.jacobian
+        psf_gmix = ref_obs.psf.gmix
+        jacob = ref_obs.jacobian
 
         image = ref_obs.image.copy()
 
-        nbr_data=ref_obs.meta['nbr_data']
+        nbr_data = ref_obs.meta['nbr_data']
         if len(nbr_data) > 0:
             for nbr in nbr_data:
                 nbr_pars = self.get_object_band_pars(
@@ -798,7 +791,7 @@ class MOFStamps(MOF):
                 nbr_pars[1] += nbr['u0']
 
                 gm0 = self._make_model(nbr_pars)
-                gm=gm0.convolve(psf_gmix)
+                gm = gm0.convolve(psf_gmix)
 
                 modelim = gm.make_image(image.shape, jacobian=jacob)
 
@@ -807,14 +800,14 @@ class MOFStamps(MOF):
         return image
 
     def get_object_band_pars(self, pars_in, iobj, band):
-        nbper=self.nband_pars_per
+        nbper = self.nband_pars_per
 
-        pars=np.zeros(nbper)
+        pars = np.zeros(nbper)
 
         # either i*6 or i*7
-        beg=0
+        beg = 0
         # either 5 or 6
-        end=0+nbper-1
+        end = 0+nbper-1
 
         ibeg = iobj*self.npars_per
         iend = ibeg+nbper-1
@@ -831,13 +824,13 @@ class MOFStamps(MOF):
         Make sure the data are consistent.
         """
 
-        totpix=0
+        totpix = 0
         for mbobs in self.list_of_obs:
             for obs_list in mbobs:
                 for obs in obs_list:
                     totpix += obs.pixels.size
 
-        self.totpix=totpix
+        self.totpix = totpix
 
     def get_fit_stats(self, pars):
         return {}
@@ -850,32 +843,31 @@ class MOFStamps(MOF):
         """
 
         # we cannot keep sending existing array into leastsq, don't know why
-        fdiff=np.zeros(self.fdiff_size)
+        fdiff = np.zeros(self.fdiff_size)
         start = 0
 
         try:
 
-            for iobj,mbo in enumerate(self.list_of_obs):
+            for iobj, mbo in enumerate(self.list_of_obs):
                 # fill priors and get new start
-                objpars=self.get_object_pars(pars, iobj)
+                objpars = self.get_object_pars(pars, iobj)
                 start = self._fill_priors(objpars, fdiff, start)
 
-                for band,obslist in enumerate(mbo):
+                for band, obslist in enumerate(mbo):
                     for obs in obslist:
 
-                        meta=obs.meta
-                        pixels=obs.pixels
+                        meta = obs.meta
+                        pixels = obs.pixels
 
-                        gm0=meta['gmix0']
-                        gm=meta['gmix']
-                        psf_gmix=obs.psf.gmix
+                        gm0 = meta['gmix0']
+                        gm = meta['gmix']
+                        psf_gmix = obs.psf.gmix
 
                         tpars = self.get_object_band_pars(
                             pars,
                             iobj,
                             band,
                         )
-
 
                         self._update_model(tpars,
                                            gm0, gm, psf_gmix,
@@ -908,8 +900,7 @@ class MOFStamps(MOF):
 
                         start += pixels.size
 
-
-        except GMixRangeError as err:
+        except GMixRangeError:
             fdiff[:] = LOWVAL
 
         return fdiff
@@ -919,12 +910,12 @@ class MOFStamps(MOF):
         same prior for every object
         """
 
-        nprior=self.prior.fill_fdiff(pars, fdiff[start:])
+        nprior = self.prior.fill_fdiff(pars, fdiff[start:])
 
         return start+nprior
 
-
-    def _update_model(self, pars, gm0, gm, psf_gmix, pixels, model_array, start):
+    def _update_model(self, pars, gm0, gm, psf_gmix,
+                      pixels, model_array, start):
         gm0._fill(pars)
         ngmix.gmix_nb.gmix_convolve_fill(
             gm._data,
@@ -968,7 +959,6 @@ class MOFStamps(MOF):
 
         return im
 
-
     def get_convolved_gmix(self, index, band=0, obsnum=0, pars=None):
         """
         get the psf-convolved gmix for the specified object, band, obsnum
@@ -976,7 +966,7 @@ class MOFStamps(MOF):
 
         gm0 = self.get_gmix(index, band=band, pars=pars)
 
-        obs=self.list_of_obs[index][band][obsnum]
+        obs = self.list_of_obs[index][band][obsnum]
         psf_gmix = obs.psf.gmix
         return gm0.convolve(psf_gmix)
 
@@ -985,8 +975,8 @@ class MOFStamps(MOF):
         get the pre-psf gmix for the specified object, band, obsnum
         """
         if pars is None:
-            res=self.get_result()
-            pars=res['pars']
+            res = self.get_result()
+            pars = res['pars']
 
         tpars = self.get_object_band_pars(
             pars,
@@ -997,7 +987,6 @@ class MOFStamps(MOF):
         gm0 = self._make_model(tpars)
         return gm0
 
-
     def _init_gmix_all(self, pars):
         """
         input pars are in linear space
@@ -1005,16 +994,16 @@ class MOFStamps(MOF):
         initialize the list of lists of gaussian mixtures
         """
 
-        for iobj,mbobs in enumerate(self.list_of_obs):
-            for band,obs_list in enumerate(mbobs):
-                band_pars=self.get_object_band_pars(pars, iobj, band)
+        for iobj, mbobs in enumerate(self.list_of_obs):
+            for band, obs_list in enumerate(mbobs):
+                band_pars = self.get_object_band_pars(pars, iobj, band)
                 for obs in obs_list:
-                    assert obs.has_psf_gmix(),"psfs must be set"
+                    assert obs.has_psf_gmix(), "psfs must be set"
 
                     # make this make a single model not huge model
                     gm0 = self._make_model(band_pars)
-                    psf_gmix=obs.psf.gmix
-                    gm=gm0.convolve(psf_gmix)
+                    psf_gmix = obs.psf.gmix
+                    gm = gm0.convolve(psf_gmix)
 
                     obs.meta['gmix0'] = gm0
                     obs.meta['gmix'] = gm
@@ -1026,27 +1015,26 @@ class MOFStamps(MOF):
         initialize the list of lists of gaussian mixtures
         """
 
-
-        gmix0_lol=[]
-        gmix_lol=[]
-        for iobj,mbobs in enumerate(self.list_of_obs):
+        gmix0_lol = []
+        gmix_lol = []
+        for iobj, mbobs in enumerate(self.list_of_obs):
 
             gmix_all0 = MultiBandGMixList()
-            gmix_all  = MultiBandGMixList()
+            gmix_all = MultiBandGMixList()
 
-            for band,obs_list in enumerate(mbobs):
-                gmix_list0=GMixList()
-                gmix_list=GMixList()
+            for band, obs_list in enumerate(mbobs):
+                gmix_list0 = GMixList()
+                gmix_list = GMixList()
 
-                band_pars=self.get_object_band_pars(pars, iobj, band)
+                band_pars = self.get_object_band_pars(pars, iobj, band)
 
                 for obs in obs_list:
-                    assert obs.has_psf_gmix(),"psfs must be set"
+                    assert obs.has_psf_gmix(), "psfs must be set"
 
                     # make this make a single model not huge model
                     gm0 = self._make_model(band_pars)
-                    psf_gmix=obs.psf.gmix
-                    gm=gm0.convolve(psf_gmix)
+                    psf_gmix = obs.psf.gmix
+                    gm = gm0.convolve(psf_gmix)
 
                     gmix_list0.append(gm0)
                     gmix_list.append(gm)
@@ -1054,12 +1042,11 @@ class MOFStamps(MOF):
                 gmix_all0.append(gmix_list0)
                 gmix_all.append(gmix_list)
 
-            gmix0_lol.append( gmix_all0 )
-            gmix_lol.append( gmix_all )
+            gmix0_lol.append(gmix_all0)
+            gmix_lol.append(gmix_all)
 
-        self.gmix0_lol=gmix0_lol
-        self.gmix_lol=gmix_lol
-
+        self.gmix0_lol = gmix0_lol
+        self.gmix_lol = gmix_lol
 
     def _make_model(self, band_pars):
         """
@@ -1073,13 +1060,14 @@ class MOFStamps(MOF):
 
     def _set_all_obs(self, list_of_obs):
 
-        lobs=[]
-        for i,o in enumerate(list_of_obs):
-            mbo=get_mb_obs(o)
-            if i==0:
-                self.nband=len(mbo)
+        lobs = []
+        for i, o in enumerate(list_of_obs):
+            mbo = get_mb_obs(o)
+            if i == 0:
+                self.nband = len(mbo)
             else:
-                assert len(mbo)==self.nband,"all obs must have same number of bands"
+                assert len(mbo) == self.nband,\
+                    "all obs must have same number of bands"
             lobs.append(mbo)
 
         self.list_of_obs = lobs
@@ -1089,60 +1077,148 @@ class MOFStamps(MOF):
         determine which neighboring objects should be
         rendered into each stamp
         """
-        for iobj,mbo in enumerate(self.list_of_obs):
-            for band in xrange(self.nband):
-                band_obslist=mbo[band]
+        for iobj, mbo in enumerate(self.list_of_obs):
+            for band in range(self.nband):
+                band_obslist = mbo[band]
 
-                for icut,obs in enumerate(band_obslist):
+                for icut, obs in enumerate(band_obslist):
                     nbr_data = self._get_nbr_data(obs, iobj, band)
-                    obs.meta['nbr_data']=nbr_data
-                    #print('    obj %d band %d cut %d found %d '
-                    #      'nbrs' % (iobj,band,icut,len(nbr_data)))
+                    obs.meta['nbr_data'] = nbr_data
 
     def _get_nbr_data(self, obs, iobj, band):
         """
         TODO trim list to those that we expect to contribute flux
         """
 
-        jacobian=obs.jacobian
-        meta=obs.meta
+        jacobian = obs.jacobian
+        meta = obs.meta
 
-        nbr_list=[]
+        nbr_list = []
         # now look for neighbors that were found in
         # this image
-        file_id=obs.meta['file_id']
-        for inbr,nbr_mbo in enumerate(self.list_of_obs):
-            if inbr==iobj:
+        file_id = obs.meta['file_id']
+        for inbr, nbr_mbo in enumerate(self.list_of_obs):
+            if inbr == iobj:
                 continue
 
-            nbr_band_obslist=nbr_mbo[band]
+            nbr_band_obslist = nbr_mbo[band]
             for nbr_obs in nbr_band_obslist:
                 # only keep the ones in the same image
                 # will want to trim later to ones expected to contribute
                 # flux
-                nbr_meta=nbr_obs.meta
-                if nbr_meta['file_id']==file_id:
+                nbr_meta = nbr_obs.meta
+                if nbr_meta['file_id'] == file_id:
                     # row,col within the postage stamp of the central object
                     row = nbr_meta['orig_row'] - meta['orig_start_row']
                     col = nbr_meta['orig_col'] - meta['orig_start_col']
-                    
-                    # this makes a copy
-                    #jacobian=obs.jacobian
-                    #jacobian.set_cen(row=row, col=col)
 
                     # note pars are [v,u,g1,g2,...]
-                    v,u=jacobian(row,col)
-                    nbr_data=dict(
-                        #row=row,
-                        #col=col,
+                    v, u = jacobian(row, col)
+                    nbr_data = dict(
                         v0=v,
                         u0=u,
                         index=inbr,
-                        #jacobian=jacobian,
                     )
                     nbr_list.append(nbr_data)
 
         return nbr_list
+
+
+class MOFFlux(MOFStamps):
+    def __init__(self, list_of_obs, model, **keys):
+        self._set_all_obs(list_of_obs)
+        self._setup_nbrs()
+        self.model = model
+
+        self.model = ngmix.gmix.get_model_num(model)
+        self.model_name = ngmix.gmix.get_model_name(self.model)
+
+        self.prior = None
+        self.n_prior_pars = 0
+
+        self.nobj = len(self.list_of_obs)
+        self._set_totpix()
+
+        self.npars_per = self.nband
+        if model == 'bd':
+            self.nband_pars_per_full = 8
+        elif model == 'bdf':
+            self.nband_pars_per_full = 7
+        else:
+            self.nband_pars_per_full = 6
+
+        self.npars = self.nobj*self.npars_per
+
+        self._set_fdiff_size()
+
+        self.lm_pars = {}
+        self.lm_pars.update(DEFAULT_LM_PARS)
+
+        lm_pars = keys.get('lm_pars', None)
+        if lm_pars is not None:
+            self.lm_pars.update(lm_pars)
+
+    def get_object_band_flux(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+
+        ind = iobj*self.npars_per + band
+        flux = flux_pars[ind]
+        return flux
+
+    def get_object_band_pars(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+
+        flux = self.get_object_band_flux(flux_pars, iobj, band)
+
+        meta = self.list_of_obs[iobj].meta
+        flags = meta['input_flags']
+        if flags == 0:
+            pars = meta['input_model_pars']
+            pars = pars[0:self.nband_pars_per_full].copy()
+        else:
+            print('    filling a star for missing pars')
+            pars = np.zeros(self.nband_pars_per_full)
+            pars[4] = 1.0e-5
+
+        pars[-1] = flux
+        return pars
+
+    def _fill_priors(self, pars, fdiff, start):
+        """
+        no priors for this fitter
+        """
+
+        return start
+
+    def get_object_result(self, i):
+        """
+        get a result dict for a single object
+        """
+        pars = self._result['pars']
+        pars_cov = self._result['pars_cov']
+
+        pres = self.get_object_psf_stats(i)
+
+        res = {}
+
+        res['nband'] = self.nband
+        res['psf_g'] = pres['g']
+        res['psf_T'] = pres['T']
+
+        res['nfev'] = self._result['nfev']
+        res['s2n'] = self.get_object_s2n(i)
+        res['pars'] = self.get_object_pars(pars, i)
+        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+
+        res['flux'] = res['pars'].copy()
+        res['flux_cov'] = res['pars_cov'].copy()
+        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+
+        return res
 
 
 # TODO move to ngmix
@@ -1163,11 +1239,11 @@ class GMixModelMulti(GMix):
     """
     def __init__(self, pars, model):
 
-        self._model      = get_model_num(model)
+        self._model = get_model_num(model)
         self._model_name = get_model_name(model)
 
         self._ngauss_per = get_model_ngauss(self._model)
-        self._npars_per  = get_model_npars(self._model)
+        self._npars_per = get_model_npars(self._model)
 
         np = len(pars)
         self._nobj = np//self._npars_per
@@ -1198,20 +1274,17 @@ class GMixModelMulti(GMix):
     def get_one(self, index):
         """
         extract the mixture for one of the component
-        models 
+        models
         """
         if index > (self._nobj-1):
             raise ValueError("index %d out of "
                              "bounds [0,%d]" % (index, self._nobj-1))
 
-        #start = index*self._ngauss_per
-        #end = (index+1)*self._ngauss_per
         start = index*self._npars_per
         end = (index+1)*self._npars_per
 
         pars = self._pars[start:end]
         return GMixModel(pars, self._model_name)
-
 
     def set_cen(self, row, col):
         """
@@ -1235,16 +1308,16 @@ class GMixModelMulti(GMix):
 
         self._pars[:] = pars
 
-        gmall=self.get_data()
+        gmall = self.get_data()
 
-        ng=self._ngauss_per
-        np=self._npars_per
+        ng = self._ngauss_per
+        np = self._npars_per
         for i in range(self._nobj):
-            beg=i*ng
-            end=(i+1)*ng
+            beg = i*ng
+            end = (i+1)*ng
 
-            pbeg=i*np
-            pend=(i+1)*np
+            pbeg = i*np
+            pend = (i+1)*np
 
             # should be a reference
             gm = gmall[beg:end]
@@ -1265,33 +1338,31 @@ def get_full_image_guesses(objects,
                            prior=None,
                            guess_from_priors=False):
 
-    if model=='bdf':
-        npars_per=6+nband
+    if model == 'bdf':
+        npars_per = 6+nband
     else:
-        npars_per=5+nband
+        npars_per = 5+nband
 
-    scale=jacobian.get_scale()
+    scale = jacobian.get_scale()
     pos_range = scale*0.1
-    #pos_range = scale
 
-    nobj=len(objects)
+    nobj = len(objects)
 
     npars_tot = nobj*npars_per
 
     if guess_from_priors:
-        #print('guessing from priors')
         guess = prior.sample()
-        assert guess.size==npars_tot
+        assert guess.size == npars_tot
 
         # now just fix the centers because we want tighter guesses than
         # the prior
-        for i in xrange(nobj):
-            row=objects['y'][i]
-            col=objects['x'][i]
+        for i in range(nobj):
+            row = objects['y'][i]
+            col = objects['x'][i]
 
             v, u = jacobian(row, col)
 
-            beg=i*npars_per
+            beg = i*npars_per
 
             # always close guess for center
             guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
@@ -1299,32 +1370,32 @@ def get_full_image_guesses(objects,
 
     else:
         guess = np.zeros(npars_tot)
-        for i in xrange(nobj):
-            row=objects['y'][i]
-            col=objects['x'][i]
+        for i in range(nobj):
+            row = objects['y'][i]
+            col = objects['x'][i]
 
             v, u = jacobian(row, col)
 
             if Tguess is not None:
-                T=Tguess
+                T = Tguess
             else:
-                T=scale**2 * (objects['x2'][i] + objects['y2'][i])
+                T = scale**2 * (objects['x2'][i] + objects['y2'][i])
 
-            flux=scale**2 * objects['flux'][i]
+            flux = scale**2 * objects['flux'][i]
 
-            beg=i*npars_per
+            beg = i*npars_per
 
             # always close guess for center
             guess[beg+0] = v + rng.uniform(low=-pos_range, high=pos_range)
             guess[beg+1] = u + rng.uniform(low=-pos_range, high=pos_range)
 
             if guess_from_priors:
-                pguess=prior.sample()
+                pguess = prior.sample()
                 # we already guessed the location
-                pguess=pguess[2:]
-                n=pguess.size
-                start=beg+2
-                end=start+n
+                pguess = pguess[2:]
+                n = pguess.size
+                start = beg+2
+                end = start+n
                 guess[start:end] = pguess
             else:
 
@@ -1334,22 +1405,19 @@ def get_full_image_guesses(objects,
 
                 guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
-
-                if model=='bdf':
+                if model == 'bdf':
                     # arbitrary guess for fracdev
-                    guess[beg+5] = rng.uniform(low=0.4,high=0.6)
-                    flux_start=6
+                    guess[beg+5] = rng.uniform(low=0.4, high=0.6)
+                    flux_start = 6
                 else:
-                    flux_start=5
-                # arbitrary guess for fracdev
-                #guess[beg+5] = rng.uniform(low=0.4,high=0.6)
+                    flux_start = 5
 
-                for band in xrange(nband):
+                # arbitrary guess for fracdev
+                for band in range(nband):
                     flux_guess = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
                     guess[beg+flux_start+band] = flux_guess
 
     return guess
-
 
 
 def get_stamp_guesses(list_of_obs,
@@ -1364,49 +1432,46 @@ def get_stamp_guesses(list_of_obs,
     T guess is gotten from detband
     """
 
-    nband=len(list_of_obs[0])
+    nband = len(list_of_obs[0])
 
-    if model=='bdf':
-        npars_per=6+nband
+    if model == 'bdf':
+        npars_per = 6+nband
     else:
-        npars_per=5+nband
+        npars_per = 5+nband
 
-    nobj=len(list_of_obs)
+    nobj = len(list_of_obs)
 
     npars_tot = nobj*npars_per
     guess = np.zeros(npars_tot)
 
-    #if guess_from_priors:
-    #    print('guessing from priors')
-
-    for i,mbo in enumerate(list_of_obs):
+    for i, mbo in enumerate(list_of_obs):
         detobslist = mbo[detband]
-        detmeta=detobslist.meta
+        detmeta = detobslist.meta
 
-        obs=detobslist[0]
+        obs = detobslist[0]
 
-        scale=obs.jacobian.get_scale()
+        scale = obs.jacobian.get_scale()
         pos_range = scale*0.1
 
         if 'Tsky' in detmeta:
-            T=detmeta['Tsky']
+            T = detmeta['Tsky']
         else:
             # not good if bands have different scales
-            T=detmeta['T']*scale**2
+            T = detmeta['T']*scale**2
 
-        beg=i*npars_per
+        beg = i*npars_per
 
         # always close guess for center
         guess[beg+0] = rng.uniform(low=-pos_range, high=pos_range)
         guess[beg+1] = rng.uniform(low=-pos_range, high=pos_range)
 
         if guess_from_priors:
-            pguess=prior.sample()
+            pguess = prior.sample()
             # we already guessed the location
-            pguess=pguess[2:]
-            n=pguess.size
-            start=beg+2
-            end=start+n
+            pguess = pguess[2:]
+            n = pguess.size
+            start = beg+2
+            end = start+n
             guess[start:end] = pguess
         else:
             # always arbitrary guess for shape
@@ -1416,49 +1481,49 @@ def get_stamp_guesses(list_of_obs,
             guess[beg+4] = T*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
             # arbitrary guess for fracdev
-            if model=='bdf':
-                guess[beg+5] = rng.uniform(low=0.4,high=0.6)
-                flux_start=6
+            if model == 'bdf':
+                guess[beg+5] = rng.uniform(low=0.4, high=0.6)
+                flux_start = 6
             else:
-                flux_start=5
+                flux_start = 5
 
-            #for band in xrange(nband):
             for band, obslist in enumerate(mbo):
-                obslist=mbo[band]
+                obslist = mbo[band]
                 scale = obslist[0].jacobian.scale
-                meta=obslist.meta
+                meta = obslist.meta
 
                 # note we take out scale**2 in DES images when
                 # loading from MEDS so this isn't needed
-                flux=meta['flux']*scale**2
-                flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+                flux = meta['flux']*scale**2
+                flux_guess = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
                 guess[beg+flux_start+band] = flux_guess
 
     return guess
 
-def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
+
+def get_mof_full_image_prior(objects, nband, jacobian, model, rng):
     """
     Note a single jacobian is being sent.  for multi-band this
     is the same as assuming they are all on the same coordinate system.
-    
-    assuming all images have the 
+
+    assuming all images have the
     prior for N objects.  The priors are the same for
     structural parameters, the only difference being the
     centers
     """
 
-    nobj=len(objects)
+    nobj = len(objects)
 
-    cen_priors=[]
+    cen_priors = []
 
-    cen_sigma=jacobian.get_scale() # a pixel
-    for i in xrange(nobj):
-        row=objects['y'][i]#-1
-        col=objects['x'][i]#-1
+    cen_sigma = jacobian.get_scale()  # a pixel
+    for i in range(nobj):
+        row = objects['y'][i]
+        col = objects['x'][i]
 
         v, u = jacobian(row, col)
-        p=ngmix.priors.CenPrior(
+        p = ngmix.priors.CenPrior(
             v,
             u,
             cen_sigma, cen_sigma,
@@ -1466,7 +1531,7 @@ def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
         )
         cen_priors.append(p)
 
-    g_prior=ngmix.priors.GPriorBA(
+    g_prior = ngmix.priors.GPriorBA(
         0.2,
         rng=rng,
     )
@@ -1480,19 +1545,8 @@ def get_mof_full_image_prior(objects, nband,jacobian, model, rng):
         -100.0, 1.0, 1.0e9, 1.0e8,
         rng=rng,
     )
-    """
-    T_prior = ngmix.priors.LogNormal(
-        0.1, 0.1,
-        rng=rng,
-    )
 
-    F_prior = ngmix.priors.LogNormal(
-        20.0, 20.0, 
-        rng=rng,
-    )
-    """
-
-    if model=='bdf':
+    if model == 'bdf':
         fracdev_prior = ngmix.priors.Normal(0.5, 0.1, rng=rng)
 
         return priors.PriorBDFSepMulti(
@@ -1516,18 +1570,18 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
     Not generic, need to let this be configurable
     """
 
-    nband=len(list_of_obs[0])
+    nband = len(list_of_obs[0])
 
-    obs=list_of_obs[0][0][0] 
-    cen_sigma=obs.jacobian.get_scale() # a pixel
-    cen_prior=ngmix.priors.CenPrior(
+    obs = list_of_obs[0][0][0]
+    cen_sigma = obs.jacobian.get_scale()  # a pixel
+    cen_prior = ngmix.priors.CenPrior(
         0.0,
         0.0,
         cen_sigma, cen_sigma,
         rng=rng,
     )
 
-    g_prior=ngmix.priors.GPriorBA(
+    g_prior = ngmix.priors.GPriorBA(
         0.2,
         rng=rng,
     )
@@ -1536,13 +1590,12 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
         rng=rng,
     )
 
-
     F_prior = ngmix.priors.TwoSidedErf(
         -100.0, 1.0, 1.0e9, 1.0e8,
         rng=rng,
     )
 
-    if model=='bdf':
+    if model == 'bdf':
         fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
         return ngmix.joint_prior.PriorBDFSep(
             cen_prior,
@@ -1558,5 +1611,3 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
             T_prior,
             [F_prior]*nband,
         )
-
-
