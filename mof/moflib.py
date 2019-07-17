@@ -27,7 +27,6 @@ from ngmix.gmix import GMixList, MultiBandGMixList
 from ngmix.gexceptions import GMixRangeError
 from ngmix.priors import LOWVAL
 from . import priors
-from numba import njit
 
 # weaker than usual
 DEFAULT_LM_PARS = {
@@ -514,8 +513,6 @@ class MOFStamps(MOF):
         Observation/ObsList/MultiBandObsList
         """
 
-        self.method = keys.pop('method', 'lm')
-
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
         self.model = model
@@ -579,44 +576,20 @@ class MOFStamps(MOF):
 
         bounds = self._get_bounds(nobj)
 
-        if self.method == 'nm':
-            result = ngmix.simplex.minimize_neldermead(
-                self.neglnprob,
-                guess,
-                xtol=1.0e-3, ftol=1.0e-3, maxfev=2000,
-            )
-            if result['success']:
-                result['flags'] = 0
-            else:
-                result['flags'] = 1
-
-            pars=result['x'].copy()
-            result['pars'] = pars
-            if result['flags'] == 0:
-                result['g'] = pars[2:2+2]
-
-        else:
-            result = run_leastsq(
-                self._calc_fdiff,
-                guess,
-                self.n_prior_pars,
-                bounds=bounds,
-                **self.lm_pars
-            )
+        result = run_leastsq(
+            self._calc_fdiff,
+            guess,
+            self.n_prior_pars,
+            bounds=bounds,
+            **self.lm_pars
+        )
 
         result['model'] = self.model_name
-        self._result = result
-
         if result['flags'] == 0:
             stat_dict = self.get_fit_stats(result['pars'])
             result.update(stat_dict)
 
-            if 'x' in result:
-                h=1.0e-3
-                m=5.0
-                self.calc_cov(h, m)
-
-        print(result)
+        self._result = result
 
     def get_result_averaged_shapes(self):
         """
@@ -931,89 +904,6 @@ class MOFStamps(MOF):
             fdiff[:] = LOWVAL
 
         return fdiff
-
-    def calc_lnprob(self, pars):
-        """
-        vector with (model-data)/error.
-
-        The npars elements contain -ln(prior)
-        """
-
-        # we cannot keep sending existing array into leastsq, don't know why
-        fdiff = np.zeros(self.totpix)
-        start = 0
-
-        lnprob = 0.0
-
-        try:
-
-            for iobj, mbo in enumerate(self.list_of_obs):
-                # fill priors and get new start
-                objpars = self.get_object_pars(pars, iobj)
-
-                lnprob += self.prior.get_lnprob_scalar(objpars)
-
-                for band, obslist in enumerate(mbo):
-                    for obs in obslist:
-
-                        meta = obs.meta
-                        pixels = obs.pixels
-
-                        gm0 = meta['gmix0']
-                        gm = meta['gmix']
-                        psf_gmix = obs.psf.gmix
-
-                        tpars = self.get_object_band_pars(
-                            pars,
-                            iobj,
-                            band,
-                        )
-
-                        self._update_model(tpars,
-                                           gm0, gm, psf_gmix,
-                                           pixels, fdiff, start)
-
-                        # now also do same for neighbors. We can re-use
-                        # the gmixes
-                        for nbr in meta['nbr_data']:
-                            tnbr_pars = self.get_object_band_pars(
-                                pars,
-                                nbr['index'],
-                                band,
-                            )
-                            # the current pars [v,u,..] are relative to
-                            # fiducial position.  we need to add these to
-                            # the fiducial for the rendering within
-                            # the stamp of the central
-                            tnbr_pars[0] += nbr['v0']
-                            tnbr_pars[1] += nbr['u0']
-                            self._update_model(tnbr_pars,
-                                               gm0, gm, psf_gmix,
-                                               pixels, fdiff, start)
-
-                        # convert model values to fdiff
-                        ngmix.fitting_nb.finish_fdiff(
-                            obs._pixels,
-                            fdiff,
-                            start,
-                        )
-
-                        start += pixels.size
-
-            # ngmix.print_pars(pars, front='pars: ')
-            # print('fdiff:', fdiff)
-            lnprob += reduce_fdiff_to_lnprob(fdiff)
-
-        except GMixRangeError:
-            lnprob = LOWVAL
-
-        return lnprob
-
-    def neglnprob(self, pars):
-        """
-        for nelder meade
-        """
-        return -1.0*self.calc_lnprob(pars)
 
     def _fill_priors(self, pars, fdiff, start):
         """
@@ -1721,44 +1611,3 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
             T_prior,
             [F_prior]*nband,
         )
-
-@njit
-def reduce_fdiff_to_lnprob(fdiff):
-    lnprob = 0.0
-    for i in range(fdiff.size):
-        lnprob += fdiff[i]**2
-
-    return -0.5*lnprob
-
-'''
-@njit
-def calc_lnprob(pixels, model):
-    """
-    fill fdiff array (model-data)/err
-
-    parameters
-    ----------
-    fdiff: gaussian mixture
-        this is assumed to corrently hold the model value, will
-        be converted to (model-data)/err
-    pixels: array if pixel structs
-        u,v,val,ierr
-    fdiff: array
-        Array to fill, should be same length as pixels
-    """
-
-    lnprob = 0.0
-    n_pixels = pixels.shape[0]
-    for ipixel in xrange(n_pixels):
-        pixel = pixels[ipixel]
-
-        model_val = model[ipixel]
-
-        fdiff = (model_val-pixel['val'])*pixel['ierr']
-
-        lnprob += fdiff*fdiff
-
-    lnprob *= -0.5
-
-    return lnprob
-'''
