@@ -1,5 +1,6 @@
 from numba import njit
 
+
 @njit
 def find_peaks(image, thresh, peakrows, peakcols):
     """
@@ -17,35 +18,35 @@ def find_peaks(image, thresh, peakrows, peakcols):
         an array to fill with peak locations
     """
 
-    npeaks=0
+    npeaks = 0
 
     nrows, ncols = image.shape
     for irow in range(nrows):
-        if irow==0 or irow==nrows-1:
+        if irow == 0 or irow == nrows-1:
             continue
 
-        rowstart=irow-1
-        rowend=irow+1
+        rowstart = irow-1
+        rowend = irow+1
         for icol in range(ncols):
-            if icol==0 or icol==ncols-1:
+            if icol == 0 or icol == ncols-1:
                 continue
 
-            colstart=icol-1
-            colend=icol+1
+            colstart = icol-1
+            colend = icol+1
 
             val = image[irow, icol]
             if val > thresh:
 
-                ispeak=True
-                for checkrow in range(rowstart,rowend+1):
-                    for checkcol in range(colstart,colend+1):
-                        if checkrow==irow and checkcol==icol:
+                ispeak = True
+                for checkrow in range(rowstart, rowend+1):
+                    for checkcol in range(colstart, colend+1):
+                        if checkrow == irow and checkcol == icol:
                             continue
 
                         checkval = image[checkrow, checkcol]
                         if checkval > val:
                             # we found an adjacent value that is higher
-                            ispeak=False
+                            ispeak = False
 
                             # break out of inner loop
                             break
