@@ -170,7 +170,39 @@ class PriorBDFSepMulti(object):
         self.npars_per=6+self.nband
         self.F_priors=F_prior
 
-        
+        self.set_bounds()
+
+    def set_bounds(self):
+        """
+        set possibe bounds
+        """
+        bounds = [
+            (None,None), # c1
+            (None,None), # c2
+            (None,None), # g1
+            (None,None), # g2
+            #(-1.0,1.0),  # g1
+            #(-1.0,1.0),  # g2
+        ]
+
+        allp = [
+            self.T_prior,
+            self.fracdev_prior,
+        ] + self.F_priors
+
+        some_have_bounds = False
+        for i, p in enumerate(allp):
+            if p.has_bounds():
+                some_have_bounds = True
+                bounds.append( (p.bounds[0], p.bounds[1]) )
+            else:
+                bounds.append((None, None))
+
+        if not some_have_bounds:
+            bounds = None
+
+        self.bounds=bounds
+
     def fill_fdiff(self, allpars, fdiff, **keys):
         """
         set sqrt(-2ln(p)) ~ (model-data)/err
