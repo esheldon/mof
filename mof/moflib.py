@@ -123,7 +123,8 @@ class MOF(LMSimple):
         """
         bounds = None
         if self.prior is not None:
-            if hasattr(self.prior, 'bounds'):
+            if (hasattr(self.prior, 'bounds') and
+                    self.prior.bounds is not None):
                 bounds = self.prior.bounds
                 bounds = bounds*nobj
 
@@ -1242,6 +1243,9 @@ class GMixModelMulti(GMix):
         self._model = get_model_num(model)
         self._model_name = get_model_name(model)
 
+        if self._model_name == 'bdf':
+            self._TdByTe = 1.0
+
         self._ngauss_per = get_model_ngauss(self._model)
         self._npars_per = get_model_npars(self._model)
 
@@ -1306,6 +1310,11 @@ class GMixModelMulti(GMix):
             The parameters
         """
 
+        if self._model_name == 'bdf':
+            dobdf = True
+        else:
+            dobdf = False
+
         self._pars[:] = pars
 
         gmall = self.get_data()
@@ -1323,10 +1332,17 @@ class GMixModelMulti(GMix):
             gm = gmall[beg:end]
             gpars = pars[pbeg:pend]
 
-            self._fill_func(
-                gm,
-                gpars,
-            )
+            if dobdf:
+                self._fill_func(
+                    gm,
+                    gpars,
+                    self._TdByTe,
+                )
+            else:
+                self._fill_func(
+                    gm,
+                    gpars,
+                )
 
 
 def get_full_image_guesses(objects,
@@ -1547,7 +1563,12 @@ def get_mof_full_image_prior(objects, nband, jacobian, model, rng):
     )
 
     if model == 'bdf':
-        fracdev_prior = ngmix.priors.Normal(0.5, 0.1, rng=rng)
+        fracdev_prior = ngmix.priors.Normal(
+            0.5,
+            0.1,
+            bounds=[0, 1],
+            rng=rng,
+        )
 
         return priors.PriorBDFSepMulti(
             cen_priors,
@@ -1596,7 +1617,13 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
     )
 
     if model == 'bdf':
-        fracdev_prior = ngmix.priors.Normal(0.0, 0.1, rng=rng)
+        fracdev_prior = ngmix.priors.Normal(
+            0.5,
+            0.1,
+            bounds=[0, 1],
+            rng=rng,
+        )
+
         return ngmix.joint_prior.PriorBDFSep(
             cen_prior,
             g_prior,
