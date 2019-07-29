@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class PriorSimpleSepMulti(object):
     """
     different center priors for each object, same priors
@@ -11,74 +12,60 @@ class PriorSimpleSepMulti(object):
                  T_prior,
                  F_prior):
 
-        self.nobj=len(cen_priors)
-        self.cen_priors=cen_priors
-        self.g_prior=g_prior
-        self.T_prior=T_prior
+        self.nobj = len(cen_priors)
+        self.cen_priors = cen_priors
+        self.g_prior = g_prior
+        self.T_prior = T_prior
 
-        if isinstance(F_prior,list):
-            self.nband=len(F_prior)
+        if isinstance(F_prior, list):
+            self.nband = len(F_prior)
         else:
-            self.nband=1
-            F_prior=[F_prior]
+            self.nband = 1
+            F_prior = [F_prior]
 
-        self.npars_per=5+self.nband
-        self.F_priors=F_prior
+        self.npars_per = 5+self.nband
+        self.F_priors = F_prior
 
     def fill_fdiff(self, allpars, fdiff, **keys):
         """
         set sqrt(-2ln(p)) ~ (model-data)/err
         """
-        import ngmix
-        index=0
+        index = 0
 
-        fstart=0
+        fstart = 0
         for i in range(self.nobj):
 
-            fstart=index
+            fstart = index
 
-            beg=i*self.npars_per
-            end=(i+1)*self.npars_per
+            beg = i*self.npars_per
+            end = (i+1)*self.npars_per
 
-            pars=allpars[beg:end]
+            pars = allpars[beg:end]
 
-            cen_prior=self.cen_priors[i]
+            cen_prior = self.cen_priors[i]
 
-            #ngmix.print_pars(pars[0:0+2], front='   checking cen: ')
-            lnp1,lnp2=cen_prior.get_lnprob_scalar_sep(pars[0],pars[1])
-            #d1,d2=cen_prior.get_fdiff(pars[0], pars[1])
-
+            lnp1, lnp2 = cen_prior.get_lnprob_scalar_sep(pars[0], pars[1])
 
             fdiff[index] = lnp1
-            #fdiff[index] = d1
             index += 1
             fdiff[index] = lnp2
-            #fdiff[index] = d2
             index += 1
 
-            #ngmix.print_pars(pars[2:2+2], front='   checking g: ')
-            fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
-            #fdiff[index] = self.g_prior.get_fdiff_scalar(pars[2],pars[3])
+            fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2], pars[3])
             index += 1
 
-            #ngmix.print_pars(pars[4:4+1], front='   checking T: ')
-            fdiff[index] =  self.T_prior.get_lnprob_scalar(pars[4], **keys)
-            #fdiff[index] =  self.T_prior.get_fdiff_scalar(pars[4])
+            fdiff[index] = self.T_prior.get_lnprob_scalar(pars[4], **keys)
             index += 1
 
             for j in range(self.nband):
-                F_prior=self.F_priors[j]
-                #fdiff[index] = F_prior.get_fdiff_scalar(pars[5+j])
+                F_prior = self.F_priors[j]
                 fdiff[index] = F_prior.get_lnprob_scalar(pars[5+j])
                 index += 1
 
             chi2 = -2*fdiff[fstart:index].copy()
-            #ngmix.print_pars(chi2, front='    chi2: ')
             chi2.clip(min=0.0, max=None, out=chi2)
             fdiff[fstart:index] = np.sqrt(chi2)
 
-
-        #ngmix.print_pars(fdiff[0:index], front='    fdiff: ')
         return index
 
     def get_prob_scalar(self, pars, **keys):
@@ -87,7 +74,7 @@ class PriorSimpleSepMulti(object):
         """
 
         lnp = self.get_lnprob_scalar(pars, **keys)
-        p = exp(lnp)
+        p = np.exp(lnp)
         return p
 
     def get_lnprob_scalar(self, allpars, **keys):
@@ -95,17 +82,17 @@ class PriorSimpleSepMulti(object):
         log probability for scalar input (meaning one point)
         """
 
-        lnp=0.0
+        lnp = 0.0
         for i in range(self.nobj):
 
-            beg=i*self.npars_per
-            end=(i+1)*self.npars_per
+            beg = i*self.npars_per
+            end = (i+1)*self.npars_per
 
-            pars=allpars[beg:end]
+            pars = allpars[beg:end]
 
-            cen_prior=self.cen_priors[i]
-            lnp += cen_prior.get_lnprob_scalar(pars[0],pars[1])
-            lnp += self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
+            cen_prior = self.cen_priors[i]
+            lnp += cen_prior.get_lnprob_scalar(pars[0], pars[1])
+            lnp += self.g_prior.get_lnprob_scalar2d(pars[2], pars[3])
             lnp += self.T_prior.get_lnprob_scalar(pars[4], **keys)
 
             for j, F_prior in enumerate(self.F_priors):
@@ -118,17 +105,16 @@ class PriorSimpleSepMulti(object):
         Get random samples
         """
 
-        samples=np.zeros(self.npars_per*self.nobj)
+        samples = np.zeros(self.npars_per*self.nobj)
 
         for i in range(self.nobj):
-            cen_prior=self.cen_priors[i]
+            cen_prior = self.cen_priors[i]
 
-            cen1,cen2 = cen_prior.sample()
-            g1,g2=self.g_prior.sample2d()
-            T=self.T_prior.sample()
+            cen1, cen2 = cen_prior.sample()
+            g1, g2 = self.g_prior.sample2d()
+            T = self.T_prior.sample()
 
-            beg=i*self.npars_per
-            end=(i+1)*self.npars_per
+            beg = i*self.npars_per
 
             samples[beg+0] = cen1
             samples[beg+1] = cen2
@@ -137,7 +123,7 @@ class PriorSimpleSepMulti(object):
             samples[beg+4] = T
 
             for j, F_prior in enumerate(self.F_priors):
-                F=F_prior.sample()
+                F = F_prior.sample()
                 samples[beg+5+j] = F
 
         return samples
@@ -155,63 +141,95 @@ class PriorBDFSepMulti(object):
                  fracdev_prior,
                  F_prior):
 
-        self.nobj=len(cen_priors)
-        self.cen_priors=cen_priors
-        self.g_prior=g_prior
-        self.T_prior=T_prior
-        self.fracdev_prior=fracdev_prior
+        self.nobj = len(cen_priors)
+        self.cen_priors = cen_priors
+        self.g_prior = g_prior
+        self.T_prior = T_prior
+        self.fracdev_prior = fracdev_prior
 
-        if isinstance(F_prior,list):
-            self.nband=len(F_prior)
+        if isinstance(F_prior, list):
+            self.nband = len(F_prior)
         else:
-            self.nband=1
-            F_prior=[F_prior]
+            self.nband = 1
+            F_prior = [F_prior]
 
-        self.npars_per=6+self.nband
-        self.F_priors=F_prior
+        self.npars_per = 6+self.nband
+        self.F_priors = F_prior
 
-        
+        self.set_bounds()
+
+    def set_bounds(self):
+        """
+        set possibe bounds
+        """
+        bounds = [
+            (None, None),  # c1
+            (None, None),  # c2
+            (None, None),  # g1
+            (None, None),  # g2
+        ]
+
+        allp = [
+            self.T_prior,
+            self.fracdev_prior,
+        ] + self.F_priors
+
+        some_have_bounds = False
+        for i, p in enumerate(allp):
+            if p.has_bounds():
+                some_have_bounds = True
+                bounds.append((p.bounds[0], p.bounds[1]))
+            else:
+                bounds.append((None, None))
+
+        if not some_have_bounds:
+            bounds = None
+
+        self.bounds = bounds
+
     def fill_fdiff(self, allpars, fdiff, **keys):
         """
         set sqrt(-2ln(p)) ~ (model-data)/err
         """
-        index=0
+        index = 0
 
-        fstart=0
+        fstart = 0
         for i in range(self.nobj):
 
-            fstart=index
+            fstart = index
 
-            beg=i*self.npars_per
-            end=(i+1)*self.npars_per
+            beg = i*self.npars_per
+            end = (i+1)*self.npars_per
 
-            pars=allpars[beg:end]
+            pars = allpars[beg:end]
 
-            cen_prior=self.cen_priors[i]
-            lnp1,lnp2=cen_prior.get_lnprob_scalar_sep(pars[0],pars[1])
+            cen_prior = self.cen_priors[i]
+            lnp1, lnp2 = cen_prior.get_lnprob_scalar_sep(pars[0], pars[1])
 
             fdiff[index] = lnp1
             index += 1
             fdiff[index] = lnp2
             index += 1
 
-            fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
+            fdiff[index] = self.g_prior.get_lnprob_scalar2d(pars[2], pars[3])
             index += 1
-            fdiff[index] =  self.T_prior.get_lnprob_scalar(pars[4], **keys)
+            fdiff[index] = self.T_prior.get_lnprob_scalar(pars[4], **keys)
             index += 1
 
-            fdiff[index] =  self.fracdev_prior.get_lnprob_scalar(pars[5], **keys)
+            fdiff[index] = self.fracdev_prior.get_lnprob_scalar(
+                pars[5],
+                **keys
+            )
             index += 1
 
             for j in range(self.nband):
-                F_prior=self.F_priors[j]
+                F_prior = self.F_priors[j]
                 fdiff[index] = F_prior.get_lnprob_scalar(pars[6+j], **keys)
                 index += 1
 
             chi2 = -2*fdiff[fstart:index].copy()
             chi2.clip(min=0.0, max=None, out=chi2)
             fdiff[fstart:index] = np.sqrt(chi2)
-
 
         return index
 
@@ -221,7 +239,7 @@ class PriorBDFSepMulti(object):
         """
 
         lnp = self.get_lnprob_scalar(pars, **keys)
-        p = exp(lnp)
+        p = np.exp(lnp)
         return p
 
     def get_lnprob_scalar(self, allpars, **keys):
@@ -229,17 +247,17 @@ class PriorBDFSepMulti(object):
         log probability for scalar input (meaning one point)
         """
 
-        lnp=0.0
+        lnp = 0.0
         for i in range(self.nobj):
 
-            beg=i*self.npars_per
-            end=(i+1)*self.npars_per
+            beg = i*self.npars_per
+            end = (i+1)*self.npars_per
 
-            pars=allpars[beg:end]
+            pars = allpars[beg:end]
 
-            cen_prior=self.cen_priors[i]
-            lnp += cen_prior.get_lnprob_scalar(pars[0],pars[1])
-            lnp += self.g_prior.get_lnprob_scalar2d(pars[2],pars[3])
+            cen_prior = self.cen_priors[i]
+            lnp += cen_prior.get_lnprob_scalar(pars[0], pars[1])
+            lnp += self.g_prior.get_lnprob_scalar2d(pars[2], pars[3])
             lnp += self.T_prior.get_lnprob_scalar(pars[4], **keys)
             lnp += self.fracdev_prior.get_lnprob_scalar(pars[5], **keys)
 
@@ -248,24 +266,22 @@ class PriorBDFSepMulti(object):
 
         return lnp
 
-
     def sample(self):
         """
         Get random samples
         """
 
-        samples=np.zeros(self.npars_per*self.nobj)
+        samples = np.zeros(self.npars_per*self.nobj)
 
         for i in range(self.nobj):
-            cen_prior=self.cen_priors[i]
+            cen_prior = self.cen_priors[i]
 
-            cen1,cen2 = cen_prior.sample()
-            g1,g2=self.g_prior.sample2d()
-            T=self.T_prior.sample()
-            fracdev=self.fracdev_prior.sample()
+            cen1, cen2 = cen_prior.sample()
+            g1, g2 = self.g_prior.sample2d()
+            T = self.T_prior.sample()
+            fracdev = self.fracdev_prior.sample()
 
-            beg=i*self.npars_per
-            end=(i+1)*self.npars_per
+            beg = i*self.npars_per
 
             samples[beg+0] = cen1
             samples[beg+1] = cen2
@@ -275,10 +291,8 @@ class PriorBDFSepMulti(object):
             samples[beg+5] = fracdev
 
             for j, F_prior in enumerate(self.F_priors):
-                F_prior=self.F_priors[j]
-                F=F_prior.sample()
+                F_prior = self.F_priors[j]
+                F = F_prior.sample()
                 samples[beg+6+j] = F
 
         return samples
-
-

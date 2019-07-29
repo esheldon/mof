@@ -9,23 +9,17 @@ import mof
 import ngmix
 import fitsio
 
-try:
-    xrange
-except:
-    xrange=range
 
 from argparse import ArgumentParser
-parser=ArgumentParser()
+parser = ArgumentParser()
 
-parser.add_argument('config_file',help='config file name')
-parser.add_argument('seed',type=int,help='seed for sim')
-parser.add_argument('ntrial',type=int,help='number to simulate')
+parser.add_argument('config_file', help='config file name')
+parser.add_argument('seed', type=int, help='seed for sim')
+parser.add_argument('ntrial', type=int, help='number to simulate')
 parser.add_argument('--stamps',
                     action='store_true',
                     help='use postage stamps')
-parser.add_argument('--uberseg',
-                    action='store_true',
-                    help='use uberseg')
+
 parser.add_argument('--galsim',
                     action='store_true',
                     help='use postage stamps')
@@ -54,8 +48,6 @@ parser.add_argument('--corrected-size',
                     default=1000,
                     help='size of corrected plot')
 
-
-
 parser.add_argument('--trueguess',
                     action='store_true',
                     help='use true guess')
@@ -66,197 +58,62 @@ parser.add_argument('--trueprior',
                     action='store_true',
                     help='use true priors')
 
-def make_full_image(args, dims, fitter, list_of_obs, pars):
-    """
-    pars here have stamp coordinates
-    """
-    impars=pars.copy()
-    nobj=len(list_of_obs)
-
-    nband=len(list_of_obs[0])
-    npars_per = 6+nband
-    
-    imlist=[]
-    jlist=[]
-    for band in xrange(nband):
-        imlist.append( np.zeros(dims) )
-        j=list_of_obs[0][band][0].jacobian
-        j.set_cen(row=0, col=0)
-        jlist.append(j)
-
-    for iobj in xrange(nobj):
-
-        for band,im in enumerate(imlist):
-            j=jlist[band]
-
-            # assuming single epoch
-            obs=list_of_obs[iobj][band][0]
-            meta=obs.meta
-
-            gm = fitter.get_convolved_gmix(
-                iobj,
-                band=band,
-            )
-
-            # center relative to the fiducial center in
-            # this postage stamp
-            v, u = gm.get_cen()
-
-            # original location, but now in bug image coords
-            v0,u0 = j(meta['orig_row'], meta['orig_col'])
-
-            v += v0
-            u += u0
-
-            gm.set_cen(v, u)
-
-            gm._fill_image(im, jacobian=j)
-
-    return imlist
-
-def make_full_image_gs(args, dims, fitter, list_of_obs, pars):
-    """
-    pars here have stamp coordinates
-    """
-    impars=pars.copy()
-    nobj=len(list_of_obs)
-
-    nband=len(list_of_obs[0])
-    npars_per = 6+nband
-    
-    imlist=[]
-    jlist=[]
-    for band in xrange(nband):
-        imlist.append( np.zeros(dims) )
-        j=list_of_obs[0][band][0].jacobian
-        j.set_cen(row=0, col=0)
-        jlist.append(j)
-
-    for iobj in xrange(nobj):
-
-        for band,im in enumerate(imlist):
-            j=jlist[band]
-
-            # assuming single epoch
-            obs=list_of_obs[iobj][band][0]
-            meta=obs.meta
-
-            gm = fitter.get_convolved_gmix(
-                iobj,
-                band=band,
-            )
-
-            # center relative to the fiducial center in
-            # this postage stamp
-            v, u = gm.get_cen()
-
-            # original location, but now in bug image coords
-            v0,u0 = j(meta['orig_row'], meta['orig_col'])
-
-            v += v0
-            u += u0
-
-            gm.set_cen(v, u)
-
-            gm._fill_image(im, jacobian=j)
-
-    return imlist
-
-
-
-def make_rgb(gim, rim, iim):
-    import images
-    rgb=images.get_color_image(
-        #imi*fac,imr*fac,img*fac,
-        iim.transpose(),
-        rim.transpose(),
-        gim.transpose(),
-        nonlinear=0.1,
-    )
-
-    print("rgb shape:",rgb.shape)
-    return rgb
-
-def make_combined3(im, model_im):
-    """
-    rgb and diff
-    """
-    nrow, ncol = im.shape
-    comb=np.zeros( (nrow, ncol*3) )
-
-    diff=model_im-im
-    comb[:, 0:ncol] = im
-    comb[:, ncol:2*ncol] = model_im
-    comb[:, 2*ncol:] = diff
-    return comb
-
-def make_combined2(im, model_im):
-    """
-    rgb and diff
-    """
-    nrow, ncol = im.shape
-    comb=np.zeros( (nrow, ncol*2) )
-
-    diff=model_im-im
-    comb[:, 0:ncol] = im
-    comb[:, ncol:] = diff
-    return comb
-
-
 
 def print_pars(nobj, npars_per, pars, front="    "):
     for i in range(nobj):
-        beg=i*npars_per
-        end=(i+1)*npars_per
-        tpars=pars[beg:end]
+        beg = i*npars_per
+        end = (i+1)*npars_per
+        tpars = pars[beg:end]
         ngmix.print_pars(tpars, front=front)
 
+
 def main():
-    args=parser.parse_args()
+    args = parser.parse_args()
 
-    print("seed:",args.seed)
+    print("seed:", args.seed)
     with open(args.config_file) as fobj:
-        config=yaml.load(fobj)
+        config = yaml.load(fobj)
 
-    nband=config['nband']
-    assert nband==1,'1 band for now'
+    nband = config['nband']
+    assert nband == 1, '1 band for now'
 
-    filebase=os.path.basename(args.config_file).replace('.yaml','')
-    filebase='%s-%d' % (filebase,args.seed)
+    filebase = os.path.basename(args.config_file).replace('.yaml', '')
+    filebase = '%s-%d' % (filebase, args.seed)
     if args.stamps:
         filebase += '-stamps'
 
-    if args.uberseg:
-        filebase += '-uberseg'
-        weight_type='uberseg'
-    else:
-        weight_type='weight'
+    weight_type = 'uberseg'
 
-    fitsfile=filebase+'.fits'
-    print("will write to:",fitsfile)
+    fitsfile = filebase+'.fits'
+    print("will write to:", fitsfile)
 
-    dt=[
-        ('psf_T','f8'),
-        ('guess','f8',6+nband),
-        ('pars','f8',6+nband),
-        ('pars_err','f8',6+nband),
-        ('flux_s2n','f8',nband),
-        ('s2n','f8'),
+    dt = [
+        ('psf_T', 'f8'),
+        ('guess', 'f8', 6+nband),
+        ('pars', 'f8', 6+nband),
+        ('pars_err', 'f8', 6+nband),
+        ('flux_s2n', 'f8', nband),
+        ('s2n', 'f8'),
     ]
 
-    detband=0
+    detband = 0
 
-    sim=mof.moftest.Sim(config, args.seed)
-    fitrng = np.random.RandomState(sim.rng.randint(0,2**15))
-    np.random.seed(fitrng.randint(0,2**15))
+    sim = mof.moftest.Sim(config, args.seed)
+    fitrng = np.random.RandomState(sim.rng.randint(0, 2**15))
+    np.random.seed(fitrng.randint(0, 2**15))
 
-    tm_sim=0.0
-    tm_fit=0.0
-    tm_extract=0.0
-    nfail=0
-    ntry=2
+    tm_sim = 0.0
+    tm_fit = 0.0
+    tm_extract = 0.0
+    nfail = 0
+    ntry = 2
 
-    output=[]
+    output = []
+    lm_pars = {
+        'maxfev': 4000,
+        'ftol': 1.0e-3,
+        'xtol': 1.0e-3,
+    }
 
     for itrial in range(args.ntrial):
         print("-"*70)
@@ -269,14 +126,13 @@ def main():
         # this runs sextractor
         this_tm_extract = time.time()
         medser = sim.get_medsifier()
-        this_tm_extract = time.time() - this_tm_extract 
+        this_tm_extract = time.time() - this_tm_extract
 
-        segmap=medser.seg
-        m2=medser.get_meds(detband)
-        objects=m2.get_cat()
+        m2 = medser.get_meds(detband)
+        objects = m2.get_cat()
 
-        print("found",len(objects),"objects")
-        nobj=len(objects)
+        print("found", len(objects), 'objects')
+        nobj = len(objects)
 
         if nobj == 0:
             print("failed to find any objects")
@@ -287,9 +143,9 @@ def main():
 
         if args.stamps:
 
-            m=medser.get_multiband_meds()
-            list_of_obs=[]
-            for iobj in xrange(objects.size):
+            m = medser.get_multiband_meds()
+            list_of_obs = []
+            for iobj in range(objects.size):
                 mbo = m.get_mbobs(iobj, weight_type=weight_type)
 
                 for olist in mbo:
@@ -299,38 +155,39 @@ def main():
                 list_of_obs.append(mbo)
 
             if args.galsim:
-                prior=mof.galsimfit.get_mof_stamps_prior_gs(
+                prior = mof.galsimfit.get_mof_stamps_prior_gs(
                     list_of_obs,
                     config['fit_model'],
                     fitrng,
                 )
 
                 if args.kspace:
-                    fitter=mof.galsimfit.KGSMOF(
+                    fitter = mof.galsimfit.KGSMOF(
                         list_of_obs,
                         config['fit_model'],
                         prior=prior,
+                        lm_pars=lm_pars,
                     )
                 else:
-                    fitter=mof.galsimfit.GSMOF(
+                    fitter = mof.galsimfit.GSMOF(
                         list_of_obs,
                         config['fit_model'],
                         prior=prior,
+                        lm_pars=lm_pars,
                     )
 
-
             else:
-                prior=mof.moflib.get_mof_stamps_prior(
+                prior = mof.moflib.get_mof_stamps_prior(
                     list_of_obs,
                     config['fit_model'],
                     fitrng,
                 )
-                fitter=mof.MOFStamps(
+                fitter = mof.MOFStamps(
                     list_of_obs,
                     config['fit_model'],
                     prior=prior,
+                    lm_pars=lm_pars,
                 )
-
 
         else:
             prior = mof.moflib.get_mof_full_image_prior(
@@ -341,11 +198,12 @@ def main():
                 fitrng,
             )
 
-            fitter=mof.MOF(
+            fitter = mof.MOF(
                 sim.obs,
                 config['fit_model'],
                 nobj,
                 prior=prior,
+                lm_pars=lm_pars,
             )
 
         for itry in range(ntry):
@@ -365,8 +223,8 @@ def main():
                 )
 
             fitter.go(guess)
-            res=fitter.get_result()
-            if res['flags']==0:
+            res = fitter.get_result()
+            if res['flags'] == 0:
                 break
 
         this_tm_fit = time.time()-this_tm_fit
@@ -375,10 +233,10 @@ def main():
         tm_sim += this_tm_sim
         tm_extract += this_tm_extract
 
-        print("this time fit:",this_tm_fit)
+        print("this time fit:", this_tm_fit)
 
         if args.show:
-            showim=sim.imlist[0]
+            showim = sim.imlist[0]
 
         if res['flags'] != 0:
             print("failed")
@@ -387,36 +245,43 @@ def main():
             if args.show:
                 import images
                 images.view(showim/showim.max())
-                if i < (args.ntrial-1) and input('hit a key (q to quit): ')=='q':
+                if (itrial < (args.ntrial-1) and
+                        input('hit a key (q to quit): ') == 'q'):
                     return
         else:
 
-            npars_per=guess.size//nobj
+            npars_per = guess.size//nobj
 
             data = np.zeros(nobj, dtype=dt)
             # assuming same psf T for all
             data['psf_T'] = sim.psf_obs.gmix.get_T()
             data['guess'] = guess.reshape(nobj, npars_per)
             data['pars'] = res['pars'].reshape(nobj, npars_per)
-            perr=np.sqrt(np.diag(res['pars_cov']))
+            perr = np.sqrt(np.diag(res['pars_cov']))
             data['pars_err'] = perr.reshape(nobj, npars_per)
-            #data['flux_s2n'] = data['pars'][:,6:]/data['pars_err'][:,6:]
-            #data['s2n'] = np.sqrt( (data['flux_s2n']**2).sum(axis=1) )
+
             output.append(data)
 
             if args.show or args.save:
                 import images
-                print("nfev:",res['nfev'])
+                print("nfev:", res['nfev'])
                 print_pars(nobj, npars_per, guess, front="guess: ")
                 print_pars(nobj, npars_per, res['pars'], front="best_fit: ")
-                print_pars(nobj, npars_per, res['pars_err'], front="     err: ")
+                print_pars(
+                    nobj,
+                    npars_per,
+                    res['pars_err'],
+                    front="     err: ",
+                )
 
                 if args.stamps:
-                    for iobj,mbobs in enumerate(list_of_obs):
-                        for band,obslist in enumerate(mbobs):
-                            for obsnum,obs in enumerate(obslist):
+                    for iobj, mbobs in enumerate(list_of_obs):
+                        for band, obslist in enumerate(mbobs):
+                            for obsnum, obs in enumerate(obslist):
                                 model_image = fitter.make_image(
-                                    iobj,band=band,obsnum=obsnum,
+                                    iobj,
+                                    band=band,
+                                    obsnum=obsnum,
                                     include_nbrs=True,
                                 )
                                 images.compare_images(
@@ -424,23 +289,36 @@ def main():
                                     model_image,
                                     label1='image',
                                     label2='model',
-                                    title='%d %d %d' % (iobj,band,obsnum)
+                                    title='%d %d %d' % (iobj, band, obsnum)
                                 )
 
-                    if (itrial < (args.ntrial-1)
-                            and input('hit a key (q to quit): ')=='q'):
-                        return
+                else:
+                    model_image = fitter.make_image(band=0, obsnum=0)
+                    # images.view(showim/showim.max())
+                    images.compare_images(
+                        showim,
+                        model_image,
+                        label1='image',
+                        label2='model',
+                        width=args.size,
+                        height=args.size,
+                        cross_sections=False,
+                    )
+
+                if (itrial < (args.ntrial-1)
+                        and input('hit a key (q to quit): ') == 'q'):
+                    return
 
     output = eu.numpy_util.combine_arrlist(output)
     fitsio.write(fitsfile, output, clobber=True)
 
-    nuse=args.ntrial-nfail
+    nuse = args.ntrial-nfail
     print("nfail: %d / %d %g" % (nfail, args.ntrial, float(nfail)/args.ntrial))
-    print("time sim per trial:",tm_sim/nuse)
-    print("time fit per trial:",tm_fit/nuse)
-    print("time extract per trial:",tm_extract/nuse)
-    print("output is in:",fitsfile)
+    print("time sim per trial:", tm_sim/nuse)
+    print("time fit per trial:", tm_fit/nuse)
+    print("time extract per trial:", tm_extract/nuse)
+    print("output is in:", fitsfile)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

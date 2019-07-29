@@ -3,12 +3,7 @@ todo
 
     - PSF fit and stats (use k space for that)
     - s/n
-    - maybe we can just do the full MOF with cosmos, but still with nbrs
-    determined by DES apparent object sizes, and then do just a template
-    fitting MOF for the other bands.  This would maybe let us do the real space
-    fitting if it is better.
-
-    - understand why getting too big fft errors.  Maybe need to 
+    - understand why getting too big fft errors.  Maybe need to
       limit hlr? Or is it due to no longer limiting fracdev?
 
     - guesses are still an issue I think. More testing with injections.
@@ -16,11 +11,6 @@ todo
 import numpy as np
 import ngmix
 from ngmix.gexceptions import GMixRangeError
-from ngmix.observation import (
-    Observation,
-    ObsList,
-    MultiBandObsList,
-)
 from ngmix.fitting import run_leastsq
 from ngmix.priors import LOWVAL
 
@@ -34,40 +24,41 @@ class KGSMOF(MOFStamps):
     """
     def __init__(self, list_of_obs, model, prior, **keys):
         """
-        list_of_obs is not an ObsList, it is a python list of 
+        list_of_obs is not an ObsList, it is a python list of
         Observation/ObsList/MultiBandObsList
         """
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
-        self.model=model
+        self.model = model
 
         self._set_model_maker()
 
         self.prior = prior
 
-        self.nobj=len(self.list_of_obs)
+        self.nobj = len(self.list_of_obs)
 
-        if model=='bdf':
+        if model == 'bdf':
             self.npars_per = 6+self.nband
-            self.nband_pars_per=7
+            self.nband_pars_per = 7
 
-            # center1 + center2 + shape + hlr + fracdev + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+            # center1 + center2 + shape + hlr + fracdev + fluxes
+            # for each object
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
         else:
             self.npars_per = 5+self.nband
-            self.nband_pars_per=6
-            self._band_pars=np.zeros(self.nband_pars_per*self.nobj)
+            self.nband_pars_per = 6
+            self._band_pars = np.zeros(self.nband_pars_per*self.nobj)
 
             # center1 + center2 + shape + hlr + fluxes for each object
-            self.n_prior_pars=self.nobj*(1 + 1 + 1 + 1 + self.nband)
+            self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + self.nband)
 
         self.npars = self.nobj*self.npars_per
 
-        self.lm_pars={}
+        self.lm_pars = {}
         self.lm_pars.update(DEFAULT_LM_PARS)
 
-        lm_pars=keys.get('lm_pars',None)
+        lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
@@ -79,7 +70,7 @@ class KGSMOF(MOFStamps):
         Run leastsq and set the result
         """
 
-        guess=np.array(guess,dtype='f8',copy=False)
+        guess = np.array(guess, dtype='f8', copy=False)
 
         nobj = guess.size//self.npars_per
         nleft = guess.size % self.npars_per
@@ -98,11 +89,11 @@ class KGSMOF(MOFStamps):
         )
 
         result['model'] = self.model
-        if result['flags']==0:
-            stat_dict=self.get_fit_stats(result['pars'])
+        if result['flags'] == 0:
+            stat_dict = self.get_fit_stats(result['pars'])
             result.update(stat_dict)
 
-        self._result=result
+        self._result = result
 
     def _calc_fdiff(self, pars):
         """
@@ -113,39 +104,49 @@ class KGSMOF(MOFStamps):
         import galsim
 
         # we cannot keep sending existing array into leastsq, don't know why
-        fdiff=np.zeros(self.fdiff_size)
+        fdiff = np.zeros(self.fdiff_size)
         start = 0
 
         try:
 
-            for iobj,mbo in enumerate(self.list_of_obs):
+            for iobj, mbo in enumerate(self.list_of_obs):
                 # fill priors and get new start
-                objpars=self.get_object_pars(pars, iobj)
+                objpars = self.get_object_pars(pars, iobj)
                 start = self._fill_priors(objpars, fdiff, start)
 
-                for band,obslist in enumerate(mbo):
+                for band, obslist in enumerate(mbo):
                     band_pars = self.get_object_band_pars(
                         pars,
                         iobj,
                         band,
                     )
 
-
                     for obs in obslist:
 
-                        central_model = self._make_fully_shifted_model(band_pars, obs)
+                        central_model = self._make_fully_shifted_model(
+                            band_pars,
+                            obs,
+                        )
 
-                        meta    = obs.meta
-                        kimage  = meta['kimage']
-                        kmodel  = meta['kmodel']
-                        ierr    = meta['ierr']
-                        psf_ii  = meta['psf_ii']
+                        meta = obs.meta
+                        kimage = meta['kimage']
+                        kmodel = meta['kmodel']
+                        ierr = meta['ierr']
+                        psf_ii = meta['psf_ii']
 
                         maxrad = self._get_maxrad(obs)
-                        nbr_models = self._get_nbr_models(iobj,pars, meta, band, maxrad, obs)
+                        nbr_models = self._get_nbr_models(
+                            iobj,
+                            pars,
+                            meta,
+                            band,
+                            maxrad,
+                            obs,
+                        )
+
                         if len(nbr_models) > 0:
-                            all_models=[central_model] + nbr_models
-                            
+                            all_models = [central_model] + nbr_models
+
                             total_model = galsim.Add(all_models)
                         else:
                             total_model = central_model
@@ -159,8 +160,8 @@ class KGSMOF(MOFStamps):
                         kmodel -= kimage
 
                         # (model-data)/err
-                        kmodel.array.real[:,:] *= ierr
-                        kmodel.array.imag[:,:] *= ierr
+                        kmodel.array.real[:, :] *= ierr
+                        kmodel.array.imag[:, :] *= ierr
 
                         # now copy into the full fdiff array
                         imsize = kmodel.array.real.size
@@ -173,7 +174,7 @@ class KGSMOF(MOFStamps):
 
                         start += imsize
 
-        except GMixRangeError as err:
+        except GMixRangeError:
             fdiff[:] = LOWVAL
 
         return fdiff
@@ -196,14 +197,13 @@ class KGSMOF(MOFStamps):
         This is done because off chip objects seem to cause
         a big problem for the k space fitter
         """
-        scale=obs.meta['scale']
+        scale = obs.meta['scale']
         return obs.image.shape[0]*scale*0.5
 
     def _get_nbr_models(self, iobj, pars, meta, band, maxrad, obs):
-        #return []
-        models=[]
+        models = []
         for nbr in meta['nbr_data']:
-            #assert nbr['index'] != iobj
+            # assert nbr['index'] != iobj
             nbr_pars = self.get_object_band_pars(
                 pars,
                 nbr['index'],
@@ -217,11 +217,10 @@ class KGSMOF(MOFStamps):
             rad_offset = np.sqrt(
                 nbr['v0']**2 + nbr['u0']**2
             )
-            #print(maxrad, rad_offset)
+            # print(maxrad, rad_offset)
             if rad_offset < maxrad:
                 nbr_pars[0] += nbr['v0']
                 nbr_pars[1] += nbr['u0']
-                #nbr_model = self.make_model(nbr_pars)
                 nbr_model = self._make_fully_shifted_model(nbr_pars, obs)
                 models.append(nbr_model)
 
@@ -234,15 +233,13 @@ class KGSMOF(MOFStamps):
         """
         jac = obs.jacobian
         cen = jac.cen
+
         # now see how far we need to shift in v,u to get the
         # given row offset from the canonical center
+
         ccen = (np.array(obs.image.shape)-1.0)/2.0
         cdiff = cen - ccen
         dv, du = jac.get_vu(cen[0] + cdiff[0], cen[1] + cdiff[1])
-        #print('ccen:',ccen)
-        #print('cen:',cen)
-        #print('cdiff:',cdiff)
-        #print('dv,du:',dv,du)
         return dv, du
 
     def _fill_priors(self, pars, fdiff, start):
@@ -250,7 +247,7 @@ class KGSMOF(MOFStamps):
         same prior for every object
         """
 
-        nprior=self.prior.fill_fdiff(pars, fdiff[start:])
+        nprior = self.prior.fill_fdiff(pars, fdiff[start:])
 
         return start+nprior
 
@@ -262,8 +259,8 @@ class KGSMOF(MOFStamps):
         model = self.make_round_model(pars)
 
         dy, dx = pars[0:0+2]
-        g1    = pars[2]
-        g2    = pars[3]
+        g1 = pars[2]
+        g2 = pars[3]
 
         g = np.sqrt(g1**2 + g2**2)
         if g > 0.99:
@@ -272,11 +269,10 @@ class KGSMOF(MOFStamps):
         # argh another generic error
         try:
             model = model.shear(g1=g1, g2=g2)
-        except (RuntimeError,ValueError) as err:
+        except (RuntimeError, ValueError) as err:
             raise GMixRangeError(str(err))
 
         model = model.shift(dx, dy)
-        #model = model.shift(dy, dx)
         return model
 
     def make_round_model(self, pars):
@@ -285,18 +281,13 @@ class KGSMOF(MOFStamps):
         """
 
         kw = {}
-        hlr   = pars[4]
+        hlr = pars[4]
 
-        if self.model=='bdf':
+        if self.model == 'bdf':
             kw['fracdev'] = pars[5]
             flux = pars[6]
-            #if kw['fracdev'] < 0.0 or kw['fracdev'] > 1.0:
-            #    raise GMixRangeError("bad fracdev: %g" % kw['fracdev'])
         else:
             flux = pars[5]
-
-        #if hlr <= 1.0e-9:
-        #    raise GMixRangeError("low hlr: %g" % hlr)
 
         # this throws a generic runtime error so there is no way to tell what
         # went wrong
@@ -314,25 +305,24 @@ class KGSMOF(MOFStamps):
 
     def _set_model_maker(self):
         import galsim
-        if self.model=='exp':
+        if self.model == 'exp':
             self._model_maker = galsim.Exponential
-        elif self.model=='dev':
+        elif self.model == 'dev':
             self._model_maker = galsim.DeVaucouleurs
-        elif self.model=='gauss':
+        elif self.model == 'gauss':
             self._model_maker = galsim.Gaussian
-        elif self.model=='bdf':
+        elif self.model == 'bdf':
             self._model_maker = make_bdf
         else:
             raise NotImplementedError("can't fit '%s'" % self.model)
 
     def _set_all_obs(self, list_of_obs):
-        lobs=[]
-        for i,mbobs in enumerate(list_of_obs):
-            nb=len(mbobs)
-            if i==0:
-                self.nband=nb
+        for i, mbobs in enumerate(list_of_obs):
+            nb = len(mbobs)
+            if i == 0:
+                self.nband = nb
             else:
-                assert nb==self.nband,\
+                assert nb == self.nband,\
                     'all obs must have same number of bands'
 
         self.list_of_obs = list_of_obs
@@ -347,8 +337,8 @@ class KGSMOF(MOFStamps):
         for mbobs in self.list_of_obs:
             for obslist in mbobs:
                 for obs in obslist:
-                    jac=obs.jacobian
-                    pjac=obs.psf.jacobian
+                    jac = obs.jacobian
+                    pjac = obs.psf.jacobian
 
                     gsimage = galsim.Image(
                         obs.image,
@@ -362,7 +352,7 @@ class KGSMOF(MOFStamps):
                     ii = galsim.InterpolatedImage(gsimage)
                     psf_ii = galsim.InterpolatedImage(psf_gsimage)
 
-                    meta=obs.meta
+                    meta = obs.meta
                     meta['scale'] = jac.scale
                     meta['gsimage'] = gsimage
                     meta['psf_ii'] = psf_ii
@@ -370,15 +360,15 @@ class KGSMOF(MOFStamps):
                     meta['kmodel'] = meta['kimage'].copy()
 
                     weight = meta['kimage'].real.array.copy()
-                    weight[:,:] = 0.5*obs.weight.max()
+                    weight[:, :] = 0.5*obs.weight.max()
 
                     # parseval's theorem
                     weight *= (1.0/weight.size)
 
                     ierr = weight.copy()
-                    ierr[:,:] = 0.0
+                    ierr[:, :] = 0.0
 
-                    w=np.where(weight > 0)
+                    w = np.where(weight > 0)
                     if w[0].size > 0:
                         ierr[w] = np.sqrt(weight[w])
 
@@ -407,10 +397,10 @@ class KGSMOF(MOFStamps):
 
         raise NotImplementedError('not yet implemented')
 
-        s2n_sum=0.0
-        mbobs=self.list_of_obs[i]
-        for band,obslist in enumerate(mbobs):
-            for obsnum,obs in enumerate(obslist):
+        s2n_sum = 0.0
+        mbobs = self.list_of_obs[i]
+        for band, obslist in enumerate(mbobs):
+            for obsnum, obs in enumerate(obslist):
                 gm = self.get_convolved_gmix(i, band=band, obsnum=obsnum)
                 s2n_sum += gm.get_model_s2n_sum(obs)
 
@@ -422,20 +412,20 @@ class KGSMOF(MOFStamps):
         we fit from ngmix?
         """
         return {
-            'g':[0.0, 0.0],
-            'T':-9999.0,
+            'g': [0.0, 0.0],
+            'T': -9999.0,
         }
         raise NotImplementedError('not yet implemented')
 
-        g1sum=0.0
-        g2sum=0.0
-        Tsum=0.0
-        wsum=0.0
+        g1sum = 0.0
+        g2sum = 0.0
+        Tsum = 0.0
+        wsum = 0.0
 
-        mbobs=self.list_of_obs[i]
-        for band,obslist in enumerate(mbobs):
-            for obsnum,obs in enumerate(obslist):
-                twsum=obs.weight.sum()
+        mbobs = self.list_of_obs[i]
+        for band, obslist in enumerate(mbobs):
+            for obsnum, obs in enumerate(obslist):
+                twsum = obs.weight.sum()
                 wsum += twsum
 
                 tg1, tg2, tT = obs.psf.gmix.get_g1g2T()
@@ -449,50 +439,47 @@ class KGSMOF(MOFStamps):
         T = Tsum/wsum
 
         return {
-            'g':[g1,g2],
-            'T':T,
+            'g': [g1, g2],
+            'T': T,
         }
 
     def get_object_result(self, i):
         """
         get a result dict for a single object
         """
-        pars=self._result['pars']
-        pars_cov=self._result['pars_cov']
+        pars = self._result['pars']
+        pars_cov = self._result['pars_cov']
 
-        pres=self.get_object_psf_stats(i)
+        pres = self.get_object_psf_stats(i)
 
-        res={}
+        res = {}
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev']     = self._result['nfev']
-        res['s2n']      = self.get_object_s2n(i)
-        res['pars']     = self.get_object_pars(pars,i)
+        res['nfev'] = self._result['nfev']
+        res['s2n'] = self.get_object_s2n(i)
+        res['pars'] = self.get_object_pars(pars, i)
         res['pars_cov'] = self.get_object_cov(pars_cov, i)
-        res['g']        = res['pars'][2:2+2].copy()
-        res['g_cov']    = res['pars_cov'][2:2+2,2:2+2].copy()
-        res['hlr']        = res['pars'][4]
-        res['hlr_err']    = np.sqrt(res['pars_cov'][4,4])
-        #res['T_ratio']  = res['T']/res['psf_T']
+        res['g'] = res['pars'][2:2+2].copy()
+        res['g_cov'] = res['pars_cov'][2:2+2, 2:2+2].copy()
+        res['hlr'] = res['pars'][4]
+        res['hlr_err'] = np.sqrt(res['pars_cov'][4, 4])
 
-        if self.model=='bdf':
+        if self.model == 'bdf':
             res['fracdev'] = res['pars'][5]
-            res['fracdev_err'] = np.sqrt(res['pars_cov'][5,5])
-            flux_start=6
+            res['fracdev_err'] = np.sqrt(res['pars_cov'][5, 5])
+            flux_start = 6
         else:
-            flux_start=5
+            flux_start = 5
 
         res['flux'] = res['pars'][flux_start:]
-        res['flux_cov'] = res['pars_cov'][flux_start:,flux_start:]
+        res['flux_cov'] = res['pars_cov'][flux_start:, flux_start:]
         res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
 
         return res
 
-
- 
     def make_corrected_image(self, index, band=0, obsnum=0):
         """
         TODO: implement for galsim
@@ -502,15 +489,15 @@ class KGSMOF(MOFStamps):
         """
         raise NotImplementedError('not yet implemented')
 
-        pars=self.get_result()['pars']
+        pars = self.get_result()['pars']
 
         ref_obs = self.list_of_obs[index][band][obsnum]
-        psf_gmix=ref_obs.psf.gmix
-        jacob=ref_obs.jacobian
+        psf_gmix = ref_obs.psf.gmix
+        jacob = ref_obs.jacobian
 
         image = ref_obs.image.copy()
 
-        nbr_data=ref_obs.meta['nbr_data']
+        nbr_data = ref_obs.meta['nbr_data']
         if len(nbr_data) > 0:
             for nbr in nbr_data:
                 nbr_pars = self.get_object_band_pars(
@@ -528,7 +515,7 @@ class KGSMOF(MOFStamps):
                 nbr_pars[1] += nbr['u0']
 
                 gm0 = self._make_model(nbr_pars)
-                gm=gm0.convolve(psf_gmix)
+                gm = gm0.convolve(psf_gmix)
 
                 modelim = gm.make_image(image.shape, jacobian=jacob)
 
@@ -538,7 +525,6 @@ class KGSMOF(MOFStamps):
 
     def get_fit_stats(self, pars):
         return {}
-
 
     def make_image(self, iobj, band=0, obsnum=0, include_nbrs=False):
         """
@@ -550,12 +536,11 @@ class KGSMOF(MOFStamps):
         """
         import galsim
 
-        res=self.get_result()
-        pars=res['pars']
+        res = self.get_result()
+        pars = res['pars']
 
         obs = self.list_of_obs[iobj][band][obsnum]
         meta = obs.meta
-        psf_meta = obs.psf.meta
 
         band_pars = self.get_object_band_pars(
             pars,
@@ -567,13 +552,20 @@ class KGSMOF(MOFStamps):
 
         if include_nbrs:
             maxrad = self._get_maxrad(obs)
-            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad, obs)
+            nbr_models = self._get_nbr_models(
+                iobj,
+                pars,
+                meta,
+                band,
+                maxrad,
+                obs
+            )
         else:
-            nbr_models=[]
+            nbr_models = []
 
         if len(nbr_models) > 0:
-            all_models=[central_model] + nbr_models
-            
+            all_models = [central_model] + nbr_models
+
             total_model = galsim.Add(all_models)
         else:
             total_model = central_model
@@ -589,6 +581,7 @@ class KGSMOF(MOFStamps):
         )
         return image.array
 
+
 class GSMOF(KGSMOF):
     """
     slow real space fitter
@@ -603,18 +596,17 @@ class GSMOF(KGSMOF):
         from galsim import GalSimFFTSizeError
 
         # we cannot keep sending existing array into leastsq, don't know why
-        fdiff=np.zeros(self.fdiff_size)
+        fdiff = np.zeros(self.fdiff_size)
         start = 0
 
         try:
 
-            for iobj,mbo in enumerate(self.list_of_obs):
+            for iobj, mbo in enumerate(self.list_of_obs):
                 # fill priors and get new start
-                objpars=self.get_object_pars(pars, iobj)
+                objpars = self.get_object_pars(pars, iobj)
                 start = self._fill_priors(objpars, fdiff, start)
 
-
-                for band,obslist in enumerate(mbo):
+                for band, obslist in enumerate(mbo):
                     band_pars = self.get_object_band_pars(
                         pars,
                         iobj,
@@ -623,19 +615,28 @@ class GSMOF(KGSMOF):
 
                     for obs in obslist:
 
+                        meta = obs.meta
+                        model = meta['model']
+                        ierr = meta['ierr']
 
-                        meta    = obs.meta
-                        model   = meta['model']
-                        ierr    = meta['ierr']
-
-                        central_model = self._make_fully_shifted_model(band_pars, obs)
+                        central_model = self._make_fully_shifted_model(
+                            band_pars,
+                            obs,
+                        )
 
                         maxrad = self._get_maxrad(obs)
-                        nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad, obs)
+                        nbr_models = self._get_nbr_models(
+                            iobj,
+                            pars,
+                            meta,
+                            band,
+                            maxrad,
+                            obs,
+                        )
 
                         if len(nbr_models) > 0:
-                            all_models=[central_model] + nbr_models
-                            
+                            all_models = [central_model] + nbr_models
+
                             total_model = galsim.Add(all_models)
                         else:
                             total_model = central_model
@@ -661,7 +662,7 @@ class GSMOF(KGSMOF):
 
                         start += imsize
 
-        except (GMixRangeError,GalSimFFTSizeError) as err:
+        except (GMixRangeError, GalSimFFTSizeError):
             fdiff[:] = LOWVAL
 
         return fdiff
@@ -674,27 +675,27 @@ class GSMOF(KGSMOF):
 
     def _set_all_obs(self, list_of_obs):
         self.list_of_obs = list_of_obs
-        for i,mbo in enumerate(list_of_obs):
-            if i==0:
-                self.nband=len(mbo)
+        for i, mbo in enumerate(list_of_obs):
+            if i == 0:
+                self.nband = len(mbo)
             else:
-                assert len(mbo)==self.nband,"all obs must have same number of bands"
+                assert len(mbo) == self.nband, \
+                    'all obs must have same number of bands'
 
     def _set_totpix(self):
         """
         total pixels in k space images
         """
 
-        totpix=0
+        totpix = 0
         for mbobs in self.list_of_obs:
             for obs_list in mbobs:
                 for obs in obs_list:
                     totpix += obs.pixels.size
 
-        self.totpix=totpix
+        self.totpix = totpix
 
     def _set_fdiff_size(self):
-
         self.fdiff_size = self.n_prior_pars + self.totpix
 
     def _init_model_images(self):
@@ -706,13 +707,13 @@ class GSMOF(KGSMOF):
         for mbobs in self.list_of_obs:
             for obslist in mbobs:
                 for obs in obslist:
-                    meta=obs.meta
+                    meta = obs.meta
 
                     weight = obs.weight
                     ierr = weight.copy()
-                    ierr[:,:] = 0.0
+                    ierr[:, :] = 0.0
 
-                    w=np.where(weight > 0)
+                    w = np.where(weight > 0)
                     if w[0].size > 0:
                         ierr[w] = np.sqrt(weight[w])
 
@@ -722,7 +723,7 @@ class GSMOF(KGSMOF):
 
                     totpix += weight.size
 
-        self.totpix=totpix
+        self.totpix = totpix
 
     def _create_models_in_obs(self, obs):
         import galsim
@@ -733,7 +734,7 @@ class GSMOF(KGSMOF):
         )
         psf_ii = galsim.InterpolatedImage(
             psf_gsimage,
-            #x_interpolant='lanczos15',
+            # x_interpolant='lanczos15',
         )
 
         gsimage = galsim.Image(
@@ -741,8 +742,7 @@ class GSMOF(KGSMOF):
             wcs=obs.jacobian.get_galsim_wcs(),
         )
 
-
-        meta=obs.meta
+        meta = obs.meta
         meta['model'] = gsimage
         obs.psf.meta['ii'] = psf_ii
 
@@ -756,8 +756,8 @@ class GSMOF(KGSMOF):
         """
         import galsim
 
-        res=self.get_result()
-        pars=res['pars']
+        res = self.get_result()
+        pars = res['pars']
 
         obs = self.list_of_obs[iobj][band][obsnum]
         meta = obs.meta
@@ -772,14 +772,21 @@ class GSMOF(KGSMOF):
         central_model = self._make_fully_shifted_model(band_pars, obs)
 
         if include_nbrs:
-            maxrad=self._get_maxrad(obs)
-            nbr_models = self._get_nbr_models(iobj, pars, meta, band, maxrad, obs)
+            maxrad = self._get_maxrad(obs)
+            nbr_models = self._get_nbr_models(
+                iobj,
+                pars,
+                meta,
+                band,
+                maxrad,
+                obs,
+            )
         else:
-            nbr_models=[]
+            nbr_models = []
 
         if len(nbr_models) > 0:
-            all_models=[central_model] + nbr_models
-            
+            all_models = [central_model] + nbr_models
+
             total_model = galsim.Add(all_models)
         else:
             total_model = central_model
@@ -795,6 +802,7 @@ class GSMOF(KGSMOF):
         )
         return image.array
 
+
 class GSMOFFlux(GSMOF):
     """
     flux only fitter
@@ -803,29 +811,29 @@ class GSMOFFlux(GSMOF):
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
-        self.model=model
+        self.model = model
 
         self._set_model_maker()
 
-        self.nobj=len(self.list_of_obs)
+        self.nobj = len(self.list_of_obs)
 
         self.npars_per = self.nband
-        self.nband_pars_per=1
+        self.nband_pars_per = 1
 
         # fluxes for each object
-        self.n_prior_pars=0
+        self.n_prior_pars = 0
 
         self.npars = self.nobj*self.npars_per
 
-        if model=='bdf':
-            self.nband_pars_per_full=7
+        if model == 'bdf':
+            self.nband_pars_per_full = 7
         else:
-            self.nband_pars_per_full=6
+            self.nband_pars_per_full = 6
 
-        self.lm_pars={}
+        self.lm_pars = {}
         self.lm_pars.update(DEFAULT_LM_PARS)
 
-        lm_pars=keys.get('lm_pars',None)
+        lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
@@ -842,17 +850,17 @@ class GSMOFFlux(GSMOF):
         from galsim import GalSimFFTSizeError
 
         # we cannot keep sending existing array into leastsq, don't know why
-        fdiff=np.zeros(self.fdiff_size)
+        fdiff = np.zeros(self.fdiff_size)
         start = 0
 
         try:
 
-            for iobj,mbo in enumerate(self.list_of_obs):
+            for iobj, mbo in enumerate(self.list_of_obs):
                 # fill priors and get new start
-                objpars=self.get_object_pars(pars, iobj)
+                objpars = self.get_object_pars(pars, iobj)
                 start = self._fill_priors(objpars, fdiff, start)
 
-                for band,obslist in enumerate(mbo):
+                for band, obslist in enumerate(mbo):
                     if 'summed_image' not in obslist[0].meta:
                         band_pars = self.get_object_band_pars(
                             pars,
@@ -870,13 +878,16 @@ class GSMOFFlux(GSMOF):
 
                     for obs in obslist:
 
-                        meta    = obs.meta
-                        model   = meta['model']
-                        ierr    = meta['ierr']
+                        meta = obs.meta
+                        model = meta['model']
+                        ierr = meta['ierr']
 
                         if 'summed_image' not in meta:
 
-                            central_model = self._make_fully_shifted_model(band_pars, obs)
+                            central_model = self._make_fully_shifted_model(
+                                band_pars,
+                                obs,
+                            )
 
                             central_image = model.copy()
                             convolved_model = galsim.Convolve(
@@ -889,7 +900,14 @@ class GSMOFFlux(GSMOF):
                             )
 
                             maxrad = self._get_maxrad(obs)
-                            nbr_models = self._get_nbr_models(iobj,pars, meta, band,maxrad, obs)
+                            nbr_models = self._get_nbr_models(
+                                iobj,
+                                pars,
+                                meta,
+                                band,
+                                maxrad,
+                                obs,
+                            )
 
                             central_image = central_image.array
                             summed_image = central_image.copy()
@@ -908,7 +926,7 @@ class GSMOFFlux(GSMOF):
                                 )
 
                                 nbr_image = nbr_image.array
-                                nbr_images.append( nbr_image )
+                                nbr_images.append(nbr_image)
 
                                 summed_image += nbr_image
 
@@ -921,19 +939,25 @@ class GSMOFFlux(GSMOF):
                             summed_image = meta['summed_image']
 
                             central_image *= flux/central_image.sum()
-                            summed_image[:,:] = central_image
+                            summed_image[:, :] = central_image
 
                             maxrad = self._get_maxrad(obs)
                             if len(meta['nbr_images']) > 0:
                                 nbr_fluxes = \
-                                    self._get_nbr_fluxes(iobj, pars, meta, band, maxrad)
-                                for inbr,nbr_image in enumerate(meta['nbr_images']):
+                                    self._get_nbr_fluxes(
+                                        iobj,
+                                        pars,
+                                        meta,
+                                        band,
+                                        maxrad,
+                                    )
+                                nim = meta['nbr_images']
+                                for inbr, nbr_image in enumerate(nim):
                                     nbr_flux = nbr_fluxes[inbr]
 
                                     nbr_image *= nbr_flux/nbr_image.sum()
 
-                                    summed_image[:,:] += nbr_image
-
+                                    summed_image[:, :] += nbr_image
 
                         # (model-data)/err
                         tfdiff = summed_image
@@ -947,11 +971,10 @@ class GSMOFFlux(GSMOF):
 
                         start += imsize
 
-        except (GMixRangeError,GalSimFFTSizeError) as err:
+        except (GMixRangeError, GalSimFFTSizeError):
             fdiff[:] = LOWVAL
 
         return fdiff
-
 
     def get_object_band_flux(self, flux_pars, iobj, band):
         """
@@ -974,9 +997,6 @@ class GSMOFFlux(GSMOF):
 
         flux = self.get_object_band_flux(flux_pars, iobj, band)
 
-        #pars = self.list_of_obs[iobj].meta['input_model_pars']
-        #pars = pars[0:self.nband_pars_per_full].copy()
-
         flags = self.list_of_obs[iobj].meta['input_flags']
         if flags == 0:
             pars = self.list_of_obs[iobj].meta['input_model_pars']
@@ -990,9 +1010,8 @@ class GSMOFFlux(GSMOF):
         return pars
 
     def _get_nbr_fluxes(self, iobj, pars, meta, band, maxrad):
-        fluxes=[]
+        fluxes = []
         for nbr in meta['nbr_data']:
-            #assert nbr['index'] != iobj
             flux = self.get_object_band_flux(
                 pars,
                 nbr['index'],
@@ -1012,20 +1031,20 @@ class GSMOFFlux(GSMOF):
         """
         get a result dict for a single object
         """
-        pars=self._result['pars']
-        pars_cov=self._result['pars_cov']
+        pars = self._result['pars']
+        pars_cov = self._result['pars_cov']
 
-        pres=self.get_object_psf_stats(i)
+        pres = self.get_object_psf_stats(i)
 
-        res={}
+        res = {}
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev']     = self._result['nfev']
-        res['s2n']      = self.get_object_s2n(i)
-        res['pars']     = self.get_object_pars(pars,i)
+        res['nfev'] = self._result['nfev']
+        res['s2n'] = self.get_object_s2n(i)
+        res['pars'] = self.get_object_pars(pars, i)
         res['pars_cov'] = self.get_object_cov(pars_cov, i)
 
         res['flux'] = res['pars'].copy()
@@ -1033,6 +1052,7 @@ class GSMOFFlux(GSMOF):
         res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
 
         return res
+
 
 class GSMOFFluxReRender(GSMOF):
     """
@@ -1042,41 +1062,39 @@ class GSMOFFluxReRender(GSMOF):
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
-        self.model=model
+        self.model = model
 
         self._set_model_maker()
 
-        self.nobj=len(self.list_of_obs)
+        self.nobj = len(self.list_of_obs)
 
         self.npars_per = self.nband
-        self.nband_pars_per=1
+        self.nband_pars_per = 1
 
         # fluxes for each object
-        self.n_prior_pars=0
+        self.n_prior_pars = 0
 
         self.npars = self.nobj*self.npars_per
 
-        if model=='bdf':
-            self.nband_pars_per_full=7
+        if model == 'bdf':
+            self.nband_pars_per_full = 7
         else:
-            self.nband_pars_per_full=6
+            self.nband_pars_per_full = 6
 
-        self.lm_pars={}
+        self.lm_pars = {}
         self.lm_pars.update(DEFAULT_LM_PARS)
 
-        lm_pars=keys.get('lm_pars',None)
+        lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
         self._init_model_images()
         self._set_fdiff_size()
 
-
     def get_object_band_pars(self, flux_pars, iobj, band):
         """
         get the input pars plus the flux
         """
-        nbper=self.nband_pars_per
 
         ind = iobj*self.npars_per + band
 
@@ -1095,9 +1113,6 @@ class GSMOFFluxReRender(GSMOF):
             pars[4] = 1.0e-5
 
         pars[-1] = flux
-        #ngmix.print_pars(pars, front='pars: ')
-        #pars[0:0+2] += 0.012
-        #print('iobj: %d band: %d flux: %g' % (iobj, band, flux))
         return pars
 
     def _fill_priors(self, pars, fdiff, start):
@@ -1110,20 +1125,20 @@ class GSMOFFluxReRender(GSMOF):
         """
         get a result dict for a single object
         """
-        pars=self._result['pars']
-        pars_cov=self._result['pars_cov']
+        pars = self._result['pars']
+        pars_cov = self._result['pars_cov']
 
-        pres=self.get_object_psf_stats(i)
+        pres = self.get_object_psf_stats(i)
 
-        res={}
+        res = {}
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev']     = self._result['nfev']
-        res['s2n']      = self.get_object_s2n(i)
-        res['pars']     = self.get_object_pars(pars,i)
+        res['nfev'] = self._result['nfev']
+        res['s2n'] = self.get_object_s2n(i)
+        res['pars'] = self.get_object_pars(pars, i)
         res['pars_cov'] = self.get_object_cov(pars_cov, i)
 
         res['flux'] = res['pars'].copy()
@@ -1151,39 +1166,40 @@ def make_bdf(half_light_radius=None,
     """
     import galsim
 
-    assert half_light_radius is not None,'send half_light_ratio'
-    assert flux is not None,'send flux'
-    assert fracdev is not None,'send fracdev'
+    assert half_light_radius is not None, 'send half_light_ratio'
+    assert flux is not None, 'send flux'
+    assert fracdev is not None, 'send fracdev'
 
     bulge = galsim.DeVaucouleurs(
-        half_light_radius = half_light_radius,
-        flux = fracdev,
+        half_light_radius=half_light_radius,
+        flux=fracdev,
     )
     disk = galsim.Exponential(
-        half_light_radius = half_light_radius,
-        flux = (1-fracdev),
+        half_light_radius=half_light_radius,
+        flux=(1-fracdev),
     )
 
     return galsim.Add(bulge, disk).withFlux(flux)
 
-# these are just examples, users should probably write their own
+
+# these are just examples, users should write their own
 def get_mof_stamps_prior_gs(list_of_obs, model, rng):
     """
     Not generic, need to let this be configurable
     """
 
-    nband=len(list_of_obs[0])
+    nband = len(list_of_obs[0])
 
-    obs=list_of_obs[0][0][0] 
-    cen_sigma=obs.jacobian.get_scale() # a pixel
-    cen_prior=ngmix.priors.CenPrior(
+    obs = list_of_obs[0][0][0]
+    cen_sigma = obs.jacobian.get_scale()  # a pixel
+    cen_prior = ngmix.priors.CenPrior(
         0.0,
         0.0,
         cen_sigma, cen_sigma,
         rng=rng,
     )
 
-    g_prior=ngmix.priors.GPriorBA(
+    g_prior = ngmix.priors.GPriorBA(
         0.2,
         rng=rng,
     )
@@ -1198,9 +1214,14 @@ def get_mof_stamps_prior_gs(list_of_obs, model, rng):
         rng=rng,
     )
 
-    if model=='bdf':
-        #fracdev_prior = ngmix.priors.Normal(0.5, 0.1, rng=rng)
-        fracdev_prior = ngmix.priors.TruncatedGaussian(0.5, 0.1, -1, 1, rng=rng)
+    if model == 'bdf':
+        fracdev_prior = ngmix.priors.TruncatedGaussian(
+            0.5,
+            0.1,
+            -1,
+            1,
+            rng=rng,
+        )
         return ngmix.joint_prior.PriorBDFSep(
             cen_prior,
             g_prior,
@@ -1216,6 +1237,7 @@ def get_mof_stamps_prior_gs(list_of_obs, model, rng):
             [F_prior]*nband,
         )
 
+
 def get_stamp_guesses_gs(list_of_obs,
                          detband,
                          model,
@@ -1228,49 +1250,46 @@ def get_stamp_guesses_gs(list_of_obs,
     T guess is gotten from detband
     """
 
-    nband=len(list_of_obs[0])
+    nband = len(list_of_obs[0])
 
-    if model=='bdf':
-        npars_per=6+nband
+    if model == 'bdf':
+        npars_per = 6+nband
     else:
-        npars_per=5+nband
+        npars_per = 5+nband
 
-    nobj=len(list_of_obs)
+    nobj = len(list_of_obs)
 
     npars_tot = nobj*npars_per
     guess = np.zeros(npars_tot)
 
-    #if guess_from_priors:
-    #    print('guessing from priors')
-
-    for i,mbo in enumerate(list_of_obs):
+    for i, mbo in enumerate(list_of_obs):
         detobslist = mbo[detband]
-        detmeta=detobslist.meta
+        detmeta = detobslist.meta
 
-        obs=detobslist[0]
+        obs = detobslist[0]
 
-        scale=obs.jacobian.get_scale()
+        scale = obs.jacobian.get_scale()
         pos_range = scale*0.1
 
         if 'Tsky' in detmeta:
-            hlr_guess = np.sqrt( detmeta['Tsky'] / 2.0 )
+            hlr_guess = np.sqrt(detmeta['Tsky'] / 2.0)
         else:
-            T=detmeta['T']*scale**2
-            hlr_guess = np.sqrt( T / 2.0 )
+            T = detmeta['T']*scale**2
+            hlr_guess = np.sqrt(T / 2.0)
 
-        beg=i*npars_per
+        beg = i*npars_per
 
         # always close guess for center
         guess[beg+0] = rng.uniform(low=-pos_range, high=pos_range)
         guess[beg+1] = rng.uniform(low=-pos_range, high=pos_range)
 
         if guess_from_priors:
-            pguess=prior.sample()
+            pguess = prior.sample()
             # we already guessed the location
-            pguess=pguess[2:]
-            n=pguess.size
-            start=beg+2
-            end=start+n
+            pguess = pguess[2:]
+            n = pguess.size
+            start = beg+2
+            end = start+n
             guess[start:end] = pguess
         else:
             # always arbitrary guess for shape
@@ -1280,24 +1299,22 @@ def get_stamp_guesses_gs(list_of_obs,
             guess[beg+4] = hlr_guess*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
             # arbitrary guess for fracdev
-            if model=='bdf':
-                guess[beg+5] = rng.uniform(low=0.4,high=0.6)
-                flux_start=6
+            if model == 'bdf':
+                guess[beg+5] = rng.uniform(low=0.4, high=0.6)
+                flux_start = 6
             else:
-                flux_start=5
+                flux_start = 5
 
-            #for band in xrange(nband):
             for band, obslist in enumerate(mbo):
-                obslist=mbo[band]
+                obslist = mbo[band]
                 scale = obslist[0].jacobian.scale
-                meta=obslist.meta
+                meta = obslist.meta
 
                 # note we take out scale**2 in DES images when
                 # loading from MEDS so this isn't needed
-                flux=meta['flux']
-                flux_guess=flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
+                flux = meta['flux']
+                flux_guess = flux*(1.0 + rng.uniform(low=-0.05, high=0.05))
 
                 guess[beg+flux_start+band] = flux_guess
 
     return guess
-
