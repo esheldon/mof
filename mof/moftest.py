@@ -202,10 +202,6 @@ class Sim(dict):
         else:
             return ngmix.priors.LimitPDF(pdf, [0.0, 30.0])
 
-    def show(self):
-        import images
-        images.multiview(self.image)
-
     def _set_bands(self):
         nband = self.get('nband', None)
 

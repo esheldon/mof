@@ -1213,13 +1213,15 @@ class MOFFlux(MOFStamps):
     def _get_lin_flux_band(self, band):
 
         rim = np.zeros(self.totpix[band])
-        model_data = np.zeros((self.totpix[band], self.nobj))
 
         flux = np.zeros(self.nobj)
+        flux_err = np.zeros(self.nobj)
 
         for ipass in range(2):
             start = 0
             starts = np.zeros(self.nobj, dtype='i4')
+            model_data = np.zeros((self.totpix[band], self.nobj))
+
             for iobj, mbo in enumerate(self.list_of_obs):
 
                 obslist = mbo[band]
@@ -1290,40 +1292,16 @@ class MOFFlux(MOFStamps):
                     rim,
                     rcond=None,
                 )
+                model_data_nonorm = model_data
             else:
-
-                """
-                chi2 = resid[0]
-                msq_sum = (total_model**2).sum()
-                arg = chi2/msq_sum/(self.image.size-nobj)
-
-                all_flux_err = np.sqrt(arg)*np.sqrt(nobj)
-                flux_err = np.array([all_flux_err]*nobj)
-                """
 
                 # this version gives the same error for 1 or N objects,
                 # whereas the true error increases somewhat with N
-                """
-                nbr_model = self.image.copy()
-                flux_err = flux*0
-                for i in range(nobj):
-                    model_image = flux[i]*self.model_images[i]
-                    nbr_model[:, :] = 0.0
-                    for j in range(nobj):
-                        if j != i:
-                            nbr_model += flux[j]*self.model_images[j]
-
-                    subim = self.image - nbr_model
-                    tchi2 = ((subim-model_image)**2).sum()
-
-                    arg = tchi2/msq_sums[i]/(self.image.size-nobj)
-                    flux_err[i] = np.sqrt(arg)
-                """
-                flux_err = flux*0
                 for i in range(self.nobj):
 
                     imodel = model_data[:, iobj]
-                    msq_sum = (imodel**2).sum()
+                    imodel_nonorm = model_data_nonorm[:, iobj]
+                    msq_sum = (imodel_nonorm**2).sum()
 
                     subim = rim.copy()
                     for j in range(self.nobj):
