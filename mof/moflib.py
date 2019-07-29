@@ -1149,6 +1149,283 @@ class MOFFlux(MOFStamps):
 
         self.npars = self.nobj*self.npars_per
 
+    def go(self, pars):
+        """
+        the pars should be from a different run with full fitting.
+
+        These will have fluxes but we will not use them
+        """
+
+        pars = np.array(pars, dtype='f8', copy=False)
+
+        # assume 5+nband pars per object
+        nobj = pars.size//self.npars_per
+        nleft = pars.size % self.npars_per
+        if nobj != self.nobj or nleft != 0:
+            raise ValueError("bad pars size: %d" % pars.size)
+
+        self._setup_data(pars)
+
+        result = self._do_lin_fit(pars)
+
+        result['model'] = self.model_name
+        if result['flags'] == 0:
+            stat_dict = self.get_fit_stats(result['pars'])
+            result.update(stat_dict)
+
+        self._result = result
+
+    def _do_lin_fit(self, pars):
+        """
+        perform the linear least sq problem
+        """
+
+        flux = np.zeros((self.nobj, self.nband)) - 9999.0
+        flux_err = np.zeros((self.nobj, self.nband)) + 9999.0
+        flags = np.zeros((self.nobj, self.nband))
+
+        for band in range(self.nband):
+
+            try:
+                tflux, tflux, tflag = self._get_lin_flux_band(pars, band)
+
+                flux[:, band] = tflux
+                flux_err[:, band] = tflux
+                flags[:, band] = tflag
+
+            except GMixRangeError:
+                flags[:, band] = 1
+            except np.linalg.LinAlgError:
+                flags[:, band] = 2
+
+        return {
+            'flux': flux,
+            'flux_err': flux_err,
+            'flags': flags,
+        }
+
+    def _get_lin_flux_band(self, pars, band):
+
+        rim = np.zeros(self.totpix[band])
+        model_data = np.zeros((self.totpix[band], self.nobj))
+
+        start = 0
+        starts = np.zeros(self.nobj)
+
+        for ipass in range(2):
+            for iobj, mbo in enumerate(self.list_of_obs):
+                objpars = self.get_object_pars(pars, iobj)
+
+                obslist = mbo[band]
+                for obs in obslist:
+
+                    meta = obs.meta
+                    pixels = obs.pixels
+
+                    rim[start:start+im.size] = pixels['val']*pixels['ierr']
+                    start += pixels.size
+
+                    gm0 = meta['gmix0']
+                    gm = meta['gmix']
+                    psf_gmix = obs.psf.gmix
+
+                    tpars = self.get_object_band_pars(
+                        pars,
+                        iobj,
+                        band,
+                    )
+                    # templates always have flux 1
+                    if ipass = 0:
+                        tpars[-1] = 1.0
+                    else:
+                        tpars[-1] = flux[iobj]
+
+                    self._set_weighted_model(
+                        tpars,
+                        gm0, gm, psf_gmix,
+                        pixels,
+                        model_data[:, iobj],
+                        starts[iobj],
+                    )
+                    starts[iobj] += pixels.size
+
+                    # now also do same for neighbors. We can re-use
+                    # the gmixes
+                    for nbr in meta['nbr_data']:
+                        tnbr_pars = self.get_object_band_pars(
+                            pars,
+                            nbr['index'],
+                            band,
+                        )
+                        if ipass == 0:
+                            tnbr_pars[-1] = 1.0
+                        else:
+                            tnbr_pars[-1] = flux[nbr['index']]
+
+                        # the current pars [v,u,..] are relative to
+                        # fiducial position.  we need to add these to
+                        # the fiducial for the rendering within
+                        # the stamp of the central
+                        tnbr_pars[0] += nbr['v0']
+                        tnbr_pars[1] += nbr['u0']
+                        self._set_weighted_model(
+                            tnbr_pars,
+                            gm0, gm, psf_gmix,
+                            pixels,
+                            model_data[:, nbr['index']],
+                            starts[nbr['index']],
+                        )
+                        starts[nbr['index']] += pixels.size
+
+            if ipass = 0:
+                flux, resid, rank, s = np.linalg.lstsq(model_data, rim, rcond=None)
+            else:
+
+                """
+                chi2 = resid[0]
+                msq_sum = (total_model**2).sum()
+                arg = chi2/msq_sum/(self.image.size-nobj)
+
+                all_flux_err = np.sqrt(arg)*np.sqrt(nobj)
+                flux_err = np.array([all_flux_err]*nobj)
+                """
+
+                # this version gives the same error for 1 or N objects,
+                # whereas the true error increases somewhat with N
+                """
+                nbr_model = self.image.copy()
+                flux_err = flux*0
+                for i in range(nobj):
+                    model_image = flux[i]*self.model_images[i]
+                    nbr_model[:, :] = 0.0
+                    for j in range(nobj):
+                        if j != i:
+                            nbr_model += flux[j]*self.model_images[j]
+
+                    subim = self.image - nbr_model
+                    tchi2 = ((subim-model_image)**2).sum()
+
+                    arg = tchi2/msq_sums[i]/(self.image.size-nobj)
+                    flux_err[i] = np.sqrt(arg)
+                """
+                flux_err = flux*0
+                for i in range(nobj):
+
+                    imodel = model_data[:, iobj]
+                    msq_sum = (imodel**2).sum()
+
+                    subim = rim.copy()
+                    for j in range(nobj):
+                        if j != i:
+                            subim -= model_data[:, j]
+
+                    tchi2 = ((subim-imodel)**2).sum()
+
+                    arg = tchi2/msq_sum/(rim.size-self.nobj)
+                    if arg > 0:
+                        flux_err[i] = np.sqrt(arg)
+
+        return {
+            'flux': flux,
+            'flux_err': flux_err,
+        }
+
+    def _set_weighted_model(self, pars, gm0, gm, psf_gmix,
+                            pixels, model_array, start):
+        gm0._fill(pars)
+        ngmix.gmix_nb.gmix_convolve_fill(
+            gm._data,
+            gm0._data,
+            psf_gmix._data,
+        )
+
+        set_weighted_model(
+            gm._data,
+            pixels,
+            model_array,
+            start,
+        )
+
+    def get_object_band_flux(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+
+        ind = iobj*self.npars_per + band
+        flux = flux_pars[ind]
+        return flux
+
+    def get_object_band_pars(self, flux_pars, iobj, band):
+        """
+        get the input pars plus the flux
+        """
+
+        flux = self.get_object_band_flux(flux_pars, iobj, band)
+
+        meta = self.list_of_obs[iobj].meta
+        flags = meta['input_flags']
+        if flags == 0:
+            pars = meta['input_model_pars']
+            pars = pars[0:self.nband_pars_per_full].copy()
+        else:
+            print('    filling a star for missing pars')
+            pars = np.zeros(self.nband_pars_per_full)
+            pars[4] = 1.0e-5
+
+        pars[-1] = flux
+        return pars
+
+    def get_object_result(self, i):
+        """
+        get a result dict for a single object
+        """
+        pars = self._result['pars']
+        pars_cov = self._result['pars_cov']
+
+        pres = self.get_object_psf_stats(i)
+
+        res = {}
+
+        res['nband'] = self.nband
+        res['psf_g'] = pres['g']
+        res['psf_T'] = pres['T']
+
+        res['nfev'] = self._result['nfev']
+        res['s2n'] = self.get_object_s2n(i)
+        res['pars'] = self.get_object_pars(pars, i)
+        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+
+        res['flux'] = res['pars'].copy()
+        res['flux_cov'] = res['pars_cov'].copy()
+        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+
+        return res
+
+class MOFFluxOld(MOFStamps):
+    def __init__(self, list_of_obs, model, **keys):
+        self._set_all_obs(list_of_obs)
+        self._setup_nbrs()
+        self.model = model
+
+        self.model = ngmix.gmix.get_model_num(model)
+        self.model_name = ngmix.gmix.get_model_name(self.model)
+
+        self.prior = None
+        self.n_prior_pars = 0
+
+        self.nobj = len(self.list_of_obs)
+        self._set_totpix()
+
+        self.npars_per = self.nband
+        if model == 'bd':
+            self.nband_pars_per_full = 8
+        elif model == 'bdf':
+            self.nband_pars_per_full = 7
+        else:
+            self.nband_pars_per_full = 6
+
+        self.npars = self.nobj*self.npars_per
+
         self._set_fdiff_size()
 
         self.lm_pars = {}
@@ -1611,3 +1888,30 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
             T_prior,
             [F_prior]*nband,
         )
+
+
+from numba import njit
+@njit
+def set_weighted_model(gmix, pixels, arr, start):
+    """
+    fill 1d array
+
+    parameters
+    ----------
+    gmix: gaussian mixture
+        See gmix.py
+    pixels: array if pixel structs
+        u,v,val,ierr
+    arr: array
+        Array to fill
+    """
+
+    if gmix['norm_set'][0] == 0:
+        gmix_set_norms(gmix)
+
+    n_pixels = pixels.shape[0]
+    for ipixel in xrange(n_pixels):
+        pixel = pixels[ipixel]
+
+        model_val = gmix_eval_pixel(gmix, pixel)
+        arr[start+ipixel] = model_val*pixel['ierr']
