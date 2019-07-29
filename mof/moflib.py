@@ -9,6 +9,7 @@ todo:
 from __future__ import print_function
 import numpy as np
 from numpy import dot
+from numba import njit
 import ngmix
 from ngmix.gmix import GMix, GMixModel, GMixBDF
 from ngmix.fitting import LMSimple
@@ -1213,9 +1214,10 @@ class MOFFlux(MOFStamps):
         start = 0
         starts = np.zeros(self.nobj)
 
+        flux = np.zeros(self.nobj)
+
         for ipass in range(2):
             for iobj, mbo in enumerate(self.list_of_obs):
-                objpars = self.get_object_pars(pars, iobj)
 
                 obslist = mbo[band]
                 for obs in obslist:
@@ -1223,7 +1225,7 @@ class MOFFlux(MOFStamps):
                     meta = obs.meta
                     pixels = obs.pixels
 
-                    rim[start:start+im.size] = pixels['val']*pixels['ierr']
+                    rim[start:start+pixels.size] = pixels['val']*pixels['ierr']
                     start += pixels.size
 
                     gm0 = meta['gmix0']
@@ -1236,7 +1238,7 @@ class MOFFlux(MOFStamps):
                         band,
                     )
                     # templates always have flux 1
-                    if ipass = 0:
+                    if ipass == 0:
                         tpars[-1] = 1.0
                     else:
                         tpars[-1] = flux[iobj]
@@ -1278,8 +1280,12 @@ class MOFFlux(MOFStamps):
                         )
                         starts[nbr['index']] += pixels.size
 
-            if ipass = 0:
-                flux, resid, rank, s = np.linalg.lstsq(model_data, rim, rcond=None)
+            if ipass == 0:
+                flux[:], resid, rank, s = np.linalg.lstsq(
+                    model_data,
+                    rim,
+                    rcond=None,
+                )
             else:
 
                 """
@@ -1310,13 +1316,13 @@ class MOFFlux(MOFStamps):
                     flux_err[i] = np.sqrt(arg)
                 """
                 flux_err = flux*0
-                for i in range(nobj):
+                for i in range(self.nobj):
 
                     imodel = model_data[:, iobj]
                     msq_sum = (imodel**2).sum()
 
                     subim = rim.copy()
-                    for j in range(nobj):
+                    for j in range(self.nobj):
                         if j != i:
                             subim -= model_data[:, j]
 
@@ -1401,6 +1407,7 @@ class MOFFlux(MOFStamps):
         res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
 
         return res
+
 
 class MOFFluxOld(MOFStamps):
     def __init__(self, list_of_obs, model, **keys):
@@ -1917,7 +1924,6 @@ def get_mof_stamps_prior(list_of_obs, model, rng):
         )
 
 
-from numba import njit
 @njit
 def set_weighted_model(gmix, pixels, arr, start):
     """
@@ -1934,11 +1940,11 @@ def set_weighted_model(gmix, pixels, arr, start):
     """
 
     if gmix['norm_set'][0] == 0:
-        gmix_set_norms(gmix)
+        ngmix.gmix_nb.gmix_set_norms(gmix)
 
     n_pixels = pixels.shape[0]
-    for ipixel in xrange(n_pixels):
+    for ipixel in range(n_pixels):
         pixel = pixels[ipixel]
 
-        model_val = gmix_eval_pixel(gmix, pixel)
+        model_val = ngmix.gmix_nb.gmix_eval_pixel(gmix, pixel)
         arr[start+ipixel] = model_val*pixel['ierr']
