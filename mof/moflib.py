@@ -1161,14 +1161,29 @@ class MOFFlux(MOFStamps):
 
         pars = np.array(pars, dtype='f8', copy=False)
 
-        # assume 5+nband pars per object
+        npars_per_input = pars.shape[1]
+
+        if npars_per_input > self.npars_per:
+            # extract a subset, the flux we might lose doesn't matter
+            pars = pars[:, :self.npars_per]
+
+        elif npars_per_input < self.npars_per:
+
+            # we need to expand the pars to have the right shape
+            parsold = pars
+            pars = np.zeros((pars.shape[0], self.npars_per))
+            pars[:, :npars_per_input] = parsold[:, :]
+            # value doesn't matter
+            pars[:, npars_per_input:] = 1.0
+
         nobj = pars.size//self.nband_pars_per
         if nobj != self.nobj:
             esize = nobj*self.npars_per
             raise ValueError('bad pars size: %s, '
                              'expected %s' % (pars.size,esize))
 
-        self._input_pars = pars
+        self._input_pars = pars.ravel()
+
         if flags is not None:
             if flags.size != pars.shape[0]:
                 m=('incompatible flags shape %s and pars '
@@ -1177,7 +1192,7 @@ class MOFFlux(MOFStamps):
 
         self._input_flags = flags
 
-        self._setup_data(pars)
+        self._setup_data(self._input_pars)
 
     def go(self):
         """
@@ -1198,9 +1213,11 @@ class MOFFlux(MOFStamps):
                 flux[:, band] = band_res['flux']
                 flux_err[:, band] = band_res['flux_err']
 
-            except GMixRangeError:
+            except GMixRangeError as err:
+                print(str(err))
                 flags[:, band] = 1
-            except np.linalg.LinAlgError:
+            except np.linalg.LinAlgError as err:
+                print(str(err))
                 flags[:, band] = 2
 
         self._result = {
@@ -1321,12 +1338,16 @@ class MOFFlux(MOFStamps):
 
     def _set_weighted_model(self, pars, gm0, gm, psf_gmix,
                             pixels, model_array, start):
+        print('pars:', pars)
         gm0._fill(pars)
+        print('gm0 T:',gm0.get_T())
+        print('psf_gm:',psf_gmix.get_g1g2T())
         ngmix.gmix_nb.gmix_convolve_fill(
             gm._data,
             gm0._data,
             psf_gmix._data,
         )
+        print('det:', gm._data['det'])
 
         set_weighted_model(
             gm._data,
@@ -1379,6 +1400,8 @@ class MOFFlux(MOFStamps):
 
         res['flux'] = all_res['flux'][i, :]
         res['flux_err'] = all_res['flux_err'][i, :]
+        # res['pars'] = res['flux'].copy()
+        # res['pars_err'] = res['flux_err'].copy()
 
         return res
 
