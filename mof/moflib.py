@@ -1127,7 +1127,7 @@ class MOFStamps(MOF):
 
 
 class MOFFlux(MOFStamps):
-    def __init__(self, list_of_obs, model, **keys):
+    def __init__(self, list_of_obs, model, pars, flags=None):
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
         self.model = model
@@ -1141,45 +1141,49 @@ class MOFFlux(MOFStamps):
         self.nobj = len(self.list_of_obs)
         self._set_totpix()
 
-        self.npars_per = self.nband
+        # these are not the returned number of pars, but the 
+        # input pars
         if model == 'bd':
-            self.nband_pars_per_full = 8
+            self.npars_per = 7+self.nband
+            self.nband_pars_per = 8
         elif model == 'bdf':
-            self.nband_pars_per_full = 7
+            self.npars_per = 6+self.nband
+            self.nband_pars_per = 7
         else:
-            self.nband_pars_per_full = 6
+            self.npars_per = 5+self.nband
+            self.nband_pars_per = 6
 
         self.npars = self.nobj*self.npars_per
 
-    def go(self, pars):
-        """
-        the pars should be from a different run with full fitting.
+        self._set_input_pars(pars, flags)
 
-        These will have fluxes but we will not use them
-        """
+    def _set_input_pars(self, pars, flags):
 
         pars = np.array(pars, dtype='f8', copy=False)
 
         # assume 5+nband pars per object
-        nobj = pars.size//self.npars_per
-        nleft = pars.size % self.npars_per
-        if nobj != self.nobj or nleft != 0:
-            raise ValueError("bad pars size: %d" % pars.size)
+        nobj = pars.size//self.nband_pars_per
+        if nobj != self.nobj:
+            esize = nobj*self.npars_per
+            raise ValueError('bad pars size: %s, '
+                             'expected %s' % (pars.size,esize))
+
+        self._input_pars = pars
+        if flags is not None:
+            if flags.size != pars.shape[0]:
+                m=('incompatible flags shape %s and pars '
+                   'shape %s' % (flags.shape, pars.shape))
+                raise ValueError(m)
+
+        self._input_flags = flags
 
         self._setup_data(pars)
 
-        result = self._do_lin_fit(pars)
-
-        result['model'] = self.model_name
-        if result['flags'] == 0:
-            stat_dict = self.get_fit_stats(result['pars'])
-            result.update(stat_dict)
-
-        self._result = result
-
-    def _do_lin_fit(self, pars):
+    def go(self):
         """
-        perform the linear least sq problem
+        the pars should be from a different run with full fitting.
+
+        These will have fluxes but we will not use them
         """
 
         flux = np.zeros((self.nobj, self.nband)) - 9999.0
@@ -1189,34 +1193,33 @@ class MOFFlux(MOFStamps):
         for band in range(self.nband):
 
             try:
-                tflux, tflux, tflag = self._get_lin_flux_band(pars, band)
+                band_res = self._get_lin_flux_band(band)
 
-                flux[:, band] = tflux
-                flux_err[:, band] = tflux
-                flags[:, band] = tflag
+                flux[:, band] = band_res['flux']
+                flux_err[:, band] = band_res['flux_err']
 
             except GMixRangeError:
                 flags[:, band] = 1
             except np.linalg.LinAlgError:
                 flags[:, band] = 2
 
-        return {
+        self._result = {
+            'model': self.model_name,
             'flux': flux,
             'flux_err': flux_err,
             'flags': flags,
         }
 
-    def _get_lin_flux_band(self, pars, band):
+    def _get_lin_flux_band(self, band):
 
         rim = np.zeros(self.totpix[band])
         model_data = np.zeros((self.totpix[band], self.nobj))
 
-        start = 0
-        starts = np.zeros(self.nobj)
-
         flux = np.zeros(self.nobj)
 
         for ipass in range(2):
+            start = 0
+            starts = np.zeros(self.nobj, dtype='i4')
             for iobj, mbo in enumerate(self.list_of_obs):
 
                 obslist = mbo[band]
@@ -1233,10 +1236,11 @@ class MOFFlux(MOFStamps):
                     psf_gmix = obs.psf.gmix
 
                     tpars = self.get_object_band_pars(
-                        pars,
+                        self._input_pars,
                         iobj,
                         band,
                     )
+
                     # templates always have flux 1
                     if ipass == 0:
                         tpars[-1] = 1.0
@@ -1256,7 +1260,7 @@ class MOFFlux(MOFStamps):
                     # the gmixes
                     for nbr in meta['nbr_data']:
                         tnbr_pars = self.get_object_band_pars(
-                            pars,
+                            self._input_pars,
                             nbr['index'],
                             band,
                         )
@@ -1353,43 +1357,38 @@ class MOFFlux(MOFStamps):
             start,
         )
 
-    def get_object_band_flux(self, flux_pars, iobj, band):
-        """
-        get the input pars plus the flux
-        """
+    def get_object_band_pars(self, input_pars, iobj, band):
+        if self._input_flags is None or self._input_flags[iobj] == 0:
+            nbper = self.nband_pars_per
 
-        ind = iobj*self.npars_per + band
-        flux = flux_pars[ind]
-        return flux
+            pars = np.zeros(nbper)
 
-    def get_object_band_pars(self, flux_pars, iobj, band):
-        """
-        get the input pars plus the flux
-        """
+            # either i*6 or i*7
+            beg = 0
+            # either 5 or 6
+            end = 0+nbper-1
 
-        flux = self.get_object_band_flux(flux_pars, iobj, band)
+            ibeg = iobj*self.npars_per
+            iend = ibeg+nbper-1
 
-        meta = self.list_of_obs[iobj].meta
-        flags = meta['input_flags']
-        if flags == 0:
-            pars = meta['input_model_pars']
-            pars = pars[0:self.nband_pars_per_full].copy()
+            pars[beg:end] = input_pars[ibeg:iend]
+
+            # now copy the flux
+            pars[end] = input_pars[iend+band]
         else:
             print('    filling a star for missing pars')
-            pars = np.zeros(self.nband_pars_per_full)
+            pars = np.zeros(self.nband_pars_per)
             pars[4] = 1.0e-5
 
-        pars[-1] = flux
         return pars
 
     def get_object_result(self, i):
         """
         get a result dict for a single object
         """
-        pars = self._result['pars']
-        pars_cov = self._result['pars_cov']
-
         pres = self.get_object_psf_stats(i)
+
+        all_res = self._result
 
         res = {}
 
@@ -1397,16 +1396,26 @@ class MOFFlux(MOFStamps):
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev'] = self._result['nfev']
-        res['s2n'] = self.get_object_s2n(i)
-        res['pars'] = self.get_object_pars(pars, i)
-        res['pars_cov'] = self.get_object_cov(pars_cov, i)
+        res['nfev'] = 1
+        # res['s2n'] = self.get_object_s2n(i)
 
-        res['flux'] = res['pars'].copy()
-        res['flux_cov'] = res['pars_cov'].copy()
-        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+        res['flux'] = all_res['flux'][i, :]
+        res['flux_err'] = all_res['flux_err'][i, :]
 
         return res
+
+    def _set_totpix(self):
+        """
+        Make sure the data are consistent.
+        """
+
+        totpix = np.zeros(self.nband, dtype='i4')
+        for mbobs in self.list_of_obs:
+            for band, obs_list in enumerate(mbobs):
+                for obs in obs_list:
+                    totpix[band] += obs.pixels.size
+
+        self.totpix = totpix
 
 
 class MOFFluxOld(MOFStamps):
