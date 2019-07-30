@@ -1116,11 +1116,11 @@ class MOFStamps(MOF):
 
                     # note pars are [v,u,g1,g2,...]
                     v, u = jacobian(row, col)
-                    nbr_data = dict(
-                        v0=v,
-                        u0=u,
-                        index=inbr,
-                    )
+                    nbr_data = {
+                        'v0': v,
+                        'u0': u,
+                        'index': inbr,
+                    }
                     nbr_list.append(nbr_data)
 
         return nbr_list
@@ -1161,6 +1161,10 @@ class MOFFlux(MOFStamps):
 
         pars = np.array(pars, dtype='f8', copy=False)
 
+        nobj = pars.shape[0]
+        if nobj != self.nobj:
+            raise ValueError('got nobj %d, expected %d' % (nobj, self.nobj))
+
         npars_per_input = pars.shape[1]
 
         if npars_per_input > self.npars_per:
@@ -1176,13 +1180,8 @@ class MOFFlux(MOFStamps):
             # value doesn't matter
             pars[:, npars_per_input:] = 1.0
 
-        nobj = pars.size//self.nband_pars_per
-        if nobj != self.nobj:
-            esize = nobj*self.npars_per
-            raise ValueError('bad pars size: %s, '
-                             'expected %s' % (pars.size,esize))
-
-        self._input_pars = pars.ravel()
+        # self._input_pars = pars.ravel()
+        self._input_pars = pars
 
         if flags is not None:
             if flags.size != pars.shape[0]:
@@ -1338,25 +1337,38 @@ class MOFFlux(MOFStamps):
 
     def _set_weighted_model(self, pars, gm0, gm, psf_gmix,
                             pixels, model_array, start):
-        print('pars:', pars)
-        gm0._fill(pars)
-        print('gm0 T:',gm0.get_T())
-        print('psf_gm:',psf_gmix.get_g1g2T())
-        ngmix.gmix_nb.gmix_convolve_fill(
-            gm._data,
-            gm0._data,
-            psf_gmix._data,
-        )
-        print('det:', gm._data['det'])
 
-        set_weighted_model(
-            gm._data,
-            pixels,
-            model_array,
-            start,
-        )
+        for i in range(2):
+            # ngmix.print_pars(pars, front='pars: ')
+            gm0._fill(pars)
+            # print('gm0 T:',gm0.get_T())
+            # print('psf_gm:',psf_gmix.get_g1g2T())
+            ngmix.gmix_nb.gmix_convolve_fill(
+                gm._data,
+                gm0._data,
+                psf_gmix._data,
+            )
+            # print('det:', gm._data['det'])
+            # print('T:', gm._data['irr'] + gm._data['icc'])
+
+            try:
+                set_weighted_model(
+                    gm._data,
+                    pixels,
+                    model_array,
+                    start,
+                )
+                break
+            except GMixRangeError as err:
+                print(str(err))
+                print('trying zero size')
+                parsold = pars
+                pars = parsold.copy()
+                pars[4] = 0.0
+
 
     def get_object_band_pars(self, input_pars, iobj, band):
+        # ngmix.print_pars(input_pars[iobj], front='input pars all: ')
         if self._input_flags is None or self._input_flags[iobj] == 0:
             nbper = self.nband_pars_per
 
@@ -1367,13 +1379,14 @@ class MOFFlux(MOFStamps):
             # either 5 or 6
             end = 0+nbper-1
 
-            ibeg = iobj*self.npars_per
-            iend = ibeg+nbper-1
+            # ibeg = iobj*self.npars_per
+            # iend = ibeg+nbper-1
 
-            pars[beg:end] = input_pars[ibeg:iend]
+            # pars[beg:end] = input_pars[ibeg:iend]
+            pars[beg:end] = input_pars[iobj, beg:end]
 
             # now copy the flux
-            pars[end] = input_pars[iend+band]
+            pars[end] = input_pars[iobj, end+band]
         else:
             print('    filling a star for missing pars')
             pars = np.zeros(self.nband_pars_per)
@@ -1400,8 +1413,9 @@ class MOFFlux(MOFStamps):
 
         res['flux'] = all_res['flux'][i, :]
         res['flux_err'] = all_res['flux_err'][i, :]
-        # res['pars'] = res['flux'].copy()
-        # res['pars_err'] = res['flux_err'].copy()
+        res['pars'] = res['flux'].copy()
+        res['pars_err'] = res['flux_err'].copy()
+        res['pars_cov'] = np.diag(res['flux_err']**2)
 
         return res
 
