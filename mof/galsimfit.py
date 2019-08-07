@@ -618,6 +618,7 @@ class GSMOF(KGSMOF):
                         meta = obs.meta
                         model = meta['model']
                         ierr = meta['ierr']
+                        wpos = meta['wpositive']
 
                         central_model = self._make_fully_shifted_model(
                             band_pars,
@@ -656,11 +657,12 @@ class GSMOF(KGSMOF):
                         tfdiff *= ierr
 
                         # now copy into the full fdiff array
-                        imsize = tfdiff.size
+                        # imsize = tfdiff.size
+                        wsize = wpos.size
 
-                        fdiff[start:start+imsize] = tfdiff.ravel()
+                        fdiff[start:start+wsize] = tfdiff[wpos].ravel()
 
-                        start += imsize
+                        start += wsize
 
         except (GMixRangeError, GalSimFFTSizeError):
             fdiff[:] = LOWVAL
@@ -719,9 +721,11 @@ class GSMOF(KGSMOF):
 
                     meta['ierr'] = ierr
                     meta['scale'] = obs.jacobian.scale
+                    meta['wpositive'] = w
                     self._create_models_in_obs(obs)
 
-                    totpix += weight.size
+                    # totpix += weight.size
+                    totpix += w.size
 
         self.totpix = totpix
 
