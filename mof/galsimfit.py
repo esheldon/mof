@@ -620,10 +620,13 @@ class GSMOF(KGSMOF):
                         ierr = meta['ierr']
                         wpos = meta['wpositive']
 
+                        """
                         central_model = self._make_fully_shifted_model(
                             band_pars,
                             obs,
                         )
+                        """
+                        central_model = self.make_model(band_pars)
 
                         maxrad = self._get_maxrad(obs)
                         nbr_models = self._get_nbr_models(
@@ -646,10 +649,13 @@ class GSMOF(KGSMOF):
                             total_model,
                             obs.psf.meta['ii'],
                         )
+                        """
                         total_model.drawImage(
                             image=model,
                             method='no_pixel',
                         )
+                        """
+                        self._do_draw(obs, total_model, model)
 
                         # (model-data)/err
                         tfdiff = model.array
@@ -658,7 +664,7 @@ class GSMOF(KGSMOF):
 
                         # now copy into the full fdiff array
                         # imsize = tfdiff.size
-                        wsize = wpos.size
+                        wsize = wpos[0].size
 
                         fdiff[start:start+wsize] = tfdiff[wpos].ravel()
 
@@ -668,6 +674,24 @@ class GSMOF(KGSMOF):
             fdiff[:] = LOWVAL
 
         return fdiff
+
+    def _do_draw(self, obs, obj, gsimage):
+        """
+        draw into the image with an offset
+        """
+        jac = obs.jacobian
+
+        # note reverse for galsim
+        ccen = (np.array(obs.image.shape) - 1.0)/2.0
+
+        jrow, jcol = jac.get_cen()
+        offset = (jcol - ccen[1], jrow - ccen[0])
+
+        obj.drawImage(
+            image=gsimage,
+            method='no_pixel',
+            offset=offset,
+        )
 
     def _get_maxrad(self, obs):
         """
@@ -683,19 +707,6 @@ class GSMOF(KGSMOF):
             else:
                 assert len(mbo) == self.nband, \
                     'all obs must have same number of bands'
-
-    def _set_totpix(self):
-        """
-        total pixels in k space images
-        """
-
-        totpix = 0
-        for mbobs in self.list_of_obs:
-            for obs_list in mbobs:
-                for obs in obs_list:
-                    totpix += obs.pixels.size
-
-        self.totpix = totpix
 
     def _set_fdiff_size(self):
         self.fdiff_size = self.n_prior_pars + self.totpix
@@ -725,7 +736,7 @@ class GSMOF(KGSMOF):
                     self._create_models_in_obs(obs)
 
                     # totpix += weight.size
-                    totpix += w.size
+                    totpix += w[0].size
 
         self.totpix = totpix
 
@@ -738,7 +749,6 @@ class GSMOF(KGSMOF):
         )
         psf_ii = galsim.InterpolatedImage(
             psf_gsimage,
-            # x_interpolant='lanczos15',
         )
 
         gsimage = galsim.Image(
