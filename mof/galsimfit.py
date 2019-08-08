@@ -8,6 +8,7 @@ todo
 
     - guesses are still an issue I think. More testing with injections.
 """
+from __future__ import print_function
 import numpy as np
 import ngmix
 from ngmix.gexceptions import GMixRangeError
@@ -16,6 +17,7 @@ from ngmix.priors import LOWVAL
 
 from .moflib import MOFStamps, DEFAULT_LM_PARS
 
+FOLDING_THRESHOLD = 0.05
 
 class KGSMOF(MOFStamps):
     """
@@ -27,6 +29,9 @@ class KGSMOF(MOFStamps):
         list_of_obs is not an ObsList, it is a python list of
         Observation/ObsList/MultiBandObsList
         """
+        import galsim
+
+        self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
@@ -147,13 +152,17 @@ class KGSMOF(MOFStamps):
                         if len(nbr_models) > 0:
                             all_models = [central_model] + nbr_models
 
-                            total_model = galsim.Add(all_models)
+                            total_model = galsim.Add(
+                                all_models,
+                                gsparams=self._gsp,
+                            )
                         else:
                             total_model = central_model
 
                         total_model = galsim.Convolve(
                             total_model,
                             psf_ii,
+                            gsparams=self._gsp,
                         )
                         total_model.drawKImage(image=kmodel)
 
@@ -217,7 +226,6 @@ class KGSMOF(MOFStamps):
             rad_offset = np.sqrt(
                 nbr['v0']**2 + nbr['u0']**2
             )
-            # print(maxrad, rad_offset)
             if rad_offset < maxrad:
                 nbr_pars[0] += nbr['v0']
                 nbr_pars[1] += nbr['u0']
@@ -283,6 +291,13 @@ class KGSMOF(MOFStamps):
         kw = {}
         hlr = pars[4]
 
+        if self.model in ['bdf', 'dev']:
+            # if hlr > self.max_dim_arcsec/2:
+            if hlr > self.max_dim_arcsec/4:
+                kw['trunc'] = self.max_dim_arcsec*2
+                if self.model == 'dev':
+                    kw['flux_untruncated'] = True
+
         if self.model == 'bdf':
             kw['fracdev'] = pars[5]
             flux = pars[6]
@@ -296,6 +311,7 @@ class KGSMOF(MOFStamps):
             model = self._model_maker(
                 half_light_radius=hlr,
                 flux=flux,
+                gsparams=self._gsp,
                 **kw
             )
         except RuntimeError as err:
@@ -333,6 +349,7 @@ class KGSMOF(MOFStamps):
         """
         import galsim
 
+        max_dim = 0
         totpix = 0
         for mbobs in self.list_of_obs:
             for obslist in mbobs:
@@ -374,8 +391,12 @@ class KGSMOF(MOFStamps):
 
                     meta['ierr'] = ierr
 
+                    dim = max(obs.image.shape)*jac.scale
+                    max_dim = max(max_dim, dim)
+
                     totpix += meta['kimage'].array.size
 
+        self.max_dim_arcsec = max_dim
         self.totpix = totpix
 
     def _set_fdiff_size(self):
@@ -566,13 +587,17 @@ class KGSMOF(MOFStamps):
         if len(nbr_models) > 0:
             all_models = [central_model] + nbr_models
 
-            total_model = galsim.Add(all_models)
+            total_model = galsim.Add(
+                all_models,
+                gsparams=self._gsp,
+            )
         else:
             total_model = central_model
 
         convolved_model = galsim.Convolve(
             total_model,
             meta['psf_ii'],
+            gsparams=self._gsp,
         )
         image = meta['gsimage'].copy()
         convolved_model.drawImage(
@@ -641,21 +666,32 @@ class GSMOF(KGSMOF):
                         if len(nbr_models) > 0:
                             all_models = [central_model] + nbr_models
 
-                            total_model = galsim.Add(all_models)
+                            total_model = galsim.Add(
+                                all_models,
+                                gsparams=self._gsp,
+                            )
                         else:
                             total_model = central_model
 
                         total_model = galsim.Convolve(
                             total_model,
                             obs.psf.meta['ii'],
+                            gsparams=self._gsp,
                         )
-                        """
-                        total_model.drawImage(
-                            image=model,
-                            method='no_pixel',
-                        )
-                        """
+
                         self._do_draw(obs, total_model, model)
+
+                        """
+                        import images
+                        images.compare_images(
+                            obs.image*obs.weight,
+                            model.array*obs.weight,
+                            label1='data',
+                            label2='model',
+                        )
+                        if raw_input('hit a key (q to quit): ')=='q':
+                            stop
+                        """
 
                         # (model-data)/err
                         tfdiff = model.array
@@ -717,10 +753,12 @@ class GSMOF(KGSMOF):
         """
 
         totpix = 0
+        max_dim = 0
         for mbobs in self.list_of_obs:
             for obslist in mbobs:
                 for obs in obslist:
                     meta = obs.meta
+                    jac = obs.jacobian
 
                     weight = obs.weight
                     ierr = weight.copy()
@@ -731,13 +769,17 @@ class GSMOF(KGSMOF):
                         ierr[w] = np.sqrt(weight[w])
 
                     meta['ierr'] = ierr
-                    meta['scale'] = obs.jacobian.scale
+                    meta['scale'] = jac.scale
                     meta['wpositive'] = w
                     self._create_models_in_obs(obs)
+
+                    dim = max(obs.image.shape)*jac.scale
+                    max_dim = max(max_dim, dim)
 
                     # totpix += weight.size
                     totpix += w[0].size
 
+        self.max_dim_arcsec = max_dim
         self.totpix = totpix
 
     def _create_models_in_obs(self, obs):
@@ -801,19 +843,22 @@ class GSMOF(KGSMOF):
         if len(nbr_models) > 0:
             all_models = [central_model] + nbr_models
 
-            total_model = galsim.Add(all_models)
+            total_model = galsim.Add(
+                all_models,
+                gsparams=self._gsp,
+            )
         else:
             total_model = central_model
 
-        convolved_model = galsim.Convolve(
+
+        total_model = galsim.Convolve(
             total_model,
             psf_meta['ii'],
+            gsparams=self._gsp,
         )
+
         image = meta['model'].copy()
-        convolved_model.drawImage(
-            image=image,
-            method='no_pixel',
-        )
+        self._do_draw(obs, total_model, image)
         return image.array
 
 
@@ -822,6 +867,9 @@ class GSMOFFlux(GSMOF):
     flux only fitter
     """
     def __init__(self, list_of_obs, model, **keys):
+        import galsim
+
+        self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
@@ -907,6 +955,7 @@ class GSMOFFlux(GSMOF):
                             convolved_model = galsim.Convolve(
                                 central_model,
                                 obs.psf.meta['ii'],
+                                gsparams=self._gsp,
                             )
                             convolved_model.drawImage(
                                 image=central_image,
@@ -933,6 +982,7 @@ class GSMOFFlux(GSMOF):
                                 convolved_model = galsim.Convolve(
                                     nbr_model,
                                     obs.psf.meta['ii'],
+                                    gsparams=self._gsp,
                                 )
                                 convolved_model.drawImage(
                                     image=nbr_image,
@@ -1074,6 +1124,8 @@ class GSMOFFluxReRender(GSMOF):
     """
     def __init__(self, list_of_obs, model, **keys):
 
+        self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
+
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
         self.model = model
@@ -1164,7 +1216,9 @@ class GSMOFFluxReRender(GSMOF):
 
 def make_bdf(half_light_radius=None,
              flux=None,
-             fracdev=None):
+             fracdev=None,
+             trunc=0.0,
+             gsparams=None):
 
     """
     a bulge+disk maker for equal hlr for bulge and disk
@@ -1184,16 +1238,29 @@ def make_bdf(half_light_radius=None,
     assert flux is not None, 'send flux'
     assert fracdev is not None, 'send fracdev'
 
+    if trunc > 0:
+        flux_untruncated = True
+    else:
+        flux_untruncated = False
+
     bulge = galsim.DeVaucouleurs(
         half_light_radius=half_light_radius,
         flux=fracdev,
+        flux_untruncated=flux_untruncated ,
+        trunc=trunc,
+        gsparams=gsparams,
     )
     disk = galsim.Exponential(
         half_light_radius=half_light_radius,
         flux=(1-fracdev),
+        gsparams=gsparams,
     )
 
-    return galsim.Add(bulge, disk).withFlux(flux)
+    return galsim.Add(
+        bulge,
+        disk,
+        gsparams=gsparams,
+    ).withFlux(flux)
 
 
 # these are just examples, users should write their own
