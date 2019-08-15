@@ -31,7 +31,7 @@ from . import priors
 
 # weaker than usual
 DEFAULT_LM_PARS = {
-    'maxfev': 2000,
+    # 'maxfev': 2000,
     'ftol': 1.0e-5,
     'xtol': 1.0e-5,
 }
