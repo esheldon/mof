@@ -1157,6 +1157,18 @@ class MOFFlux(MOFStamps):
 
         self._set_input_pars(pars, flags)
 
+    def get_gmix(self, index, band=0, pars=None):
+        """
+        get the pre-psf gmix for the specified object, band, obsnum
+        """
+
+        if pars is not None:
+            gm0 = self._make_model(pars)
+        else:
+            gm0 = self.list_of_obs[index][band][0].meta['gmix0'].copy()
+
+        return gm0
+
     def _set_input_pars(self, pars, flags):
 
         pars = np.array(pars, dtype='f8', copy=False)
