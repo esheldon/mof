@@ -31,7 +31,6 @@ from . import priors
 
 # weaker than usual
 DEFAULT_LM_PARS = {
-    # 'maxfev': 2000,
     'ftol': 1.0e-5,
     'xtol': 1.0e-5,
 }
@@ -83,6 +82,10 @@ class MOF(LMSimple):
         lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
+
+        if 'maxfev' not in self.lm_pars:
+            # default in leastsq is 100*(self.npars+1)
+            self.lm_pars['maxfev'] = 300*(self.npars+1)
 
     def go(self, guess):
         """
@@ -560,6 +563,10 @@ class MOFStamps(MOF):
         lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
+
+        if 'maxfev' not in self.lm_pars:
+            # default in leastsq is 100*(self.npars+1)
+            self.lm_pars['maxfev'] = 300*(self.npars+1)
 
     def go(self, guess):
         """
@@ -1141,7 +1148,7 @@ class MOFFlux(MOFStamps):
         self.nobj = len(self.list_of_obs)
         self._set_totpix()
 
-        # these are not the returned number of pars, but the 
+        # these are not the returned number of pars, but the
         # input pars
         if model == 'bd':
             self.npars_per = 7+self.nband
@@ -1197,8 +1204,8 @@ class MOFFlux(MOFStamps):
 
         if flags is not None:
             if flags.size != pars.shape[0]:
-                m=('incompatible flags shape %s and pars '
-                   'shape %s' % (flags.shape, pars.shape))
+                m = ('incompatible flags shape %s and pars '
+                     'shape %s' % (flags.shape, pars.shape))
                 raise ValueError(m)
 
         self._input_flags = flags
@@ -1378,7 +1385,6 @@ class MOFFlux(MOFStamps):
                 pars = parsold.copy()
                 pars[4] = 0.0
 
-
     def get_object_band_pars(self, input_pars, iobj, band):
         # ngmix.print_pars(input_pars[iobj], front='input pars all: ')
         if self._input_flags is None or self._input_flags[iobj] == 0:
@@ -1478,6 +1484,10 @@ class MOFFluxOld(MOFStamps):
         lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
+
+        if 'maxfev' not in self.lm_pars:
+            # default in leastsq is 100*(self.npars+1)
+            self.lm_pars['maxfev'] = 300*(self.npars+1)
 
     def get_object_band_flux(self, flux_pars, iobj, band):
         """
