@@ -67,6 +67,10 @@ class KGSMOF(MOFStamps):
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
 
+        if 'maxfev' not in self.lm_pars:
+            # default in leastsq is 100*(self.npars+1)
+            self.lm_pars['maxfev'] = 300*(self.npars+1)
+
         self._init_model_images()
         self._set_fdiff_size()
 
@@ -416,17 +420,6 @@ class KGSMOF(MOFStamps):
         """
         return 100.0
 
-        raise NotImplementedError('not yet implemented')
-
-        s2n_sum = 0.0
-        mbobs = self.list_of_obs[i]
-        for band, obslist in enumerate(mbobs):
-            for obsnum, obs in enumerate(obslist):
-                gm = self.get_convolved_gmix(i, band=band, obsnum=obsnum)
-                s2n_sum += gm.get_model_s2n_sum(obs)
-
-        return np.sqrt(s2n_sum)
-
     def get_object_psf_stats(self, i):
         """
         TODO: implement for galsim psfs?  how can we get the psfs
@@ -645,12 +638,6 @@ class GSMOF(KGSMOF):
                         ierr = meta['ierr']
                         wpos = meta['wpositive']
 
-                        """
-                        central_model = self._make_fully_shifted_model(
-                            band_pars,
-                            obs,
-                        )
-                        """
                         central_model = self.make_model(band_pars)
 
                         maxrad = self._get_maxrad(obs)
@@ -680,18 +667,6 @@ class GSMOF(KGSMOF):
                         )
 
                         self._do_draw(obs, total_model, model)
-
-                        """
-                        import images
-                        images.compare_images(
-                            obs.image*obs.weight,
-                            model.array*obs.weight,
-                            label1='data',
-                            label2='model',
-                        )
-                        if raw_input('hit a key (q to quit): ')=='q':
-                            stop
-                        """
 
                         # (model-data)/err
                         tfdiff = model.array
@@ -728,6 +703,28 @@ class GSMOF(KGSMOF):
             method='no_pixel',
             offset=offset,
         )
+
+    def get_object_s2n(self, i):
+        """
+        TODO: implement for galsim
+
+        get the s/n for the given object.  This uses just the model
+        to calculate the s/n, but does use the full weight map
+        """
+
+        s2n_sum = 0.0
+        mbobs = self.list_of_obs[i]
+        for band, obslist in enumerate(mbobs):
+            for obsnum, obs in enumerate(obslist):
+                im = self.make_image(i, band=band, obsnum=obsnum, include_nbrs=False)
+                wt = obs.weight
+
+                s2n_sum += (im**2 * wt).sum()
+
+        if s2n_sum < 0.0:
+            s2n_sum = 0.0
+
+        return np.sqrt(s2n_sum)
 
     def _get_maxrad(self, obs):
         """
@@ -898,6 +895,10 @@ class GSMOFFlux(GSMOF):
         lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
+
+        if 'maxfev' not in self.lm_pars:
+            # default in leastsq is 100*(self.npars+1)
+            self.lm_pars['maxfev'] = 300*(self.npars+1)
 
         self._init_model_images()
         self._set_fdiff_size()
@@ -1153,6 +1154,10 @@ class GSMOFFluxReRender(GSMOF):
         lm_pars = keys.get('lm_pars', None)
         if lm_pars is not None:
             self.lm_pars.update(lm_pars)
+
+        if 'maxfev' not in self.lm_pars:
+            # default in leastsq is 100*(self.npars+1)
+            self.lm_pars['maxfev'] = 300*(self.npars+1)
 
         self._init_model_images()
         self._set_fdiff_size()
