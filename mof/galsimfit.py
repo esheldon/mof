@@ -1082,7 +1082,8 @@ class GSMOFFlux(GSMOF):
         else:
             print('    filling a star for missing pars')
             pars = np.zeros(self.nband_pars_per_full)
-            pars[4] = 1.0e-5
+            # pars[4] = 1.0e-5
+            pars[4] = -4
 
         pars[-1] = flux
         return pars
@@ -1194,7 +1195,8 @@ class GSMOFFluxReRender(GSMOF):
         else:
             print('    filling a star for missing pars')
             pars = np.zeros(self.nband_pars_per_full)
-            pars[4] = 1.0e-5
+            # pars[4] = 1.0e-5
+            pars[4] = -4
 
         pars[-1] = flux
         return pars
