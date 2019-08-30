@@ -418,7 +418,20 @@ class KGSMOF(MOFStamps):
         get the s/n for the given object.  This uses just the model
         to calculate the s/n, but does use the full weight map
         """
-        return 100.0
+
+        s2n_sum = 0.0
+        mbobs = self.list_of_obs[i]
+        for band, obslist in enumerate(mbobs):
+            for obsnum, obs in enumerate(obslist):
+                im = self.make_image(i, band=band, obsnum=obsnum, include_nbrs=False)
+                wt = obs.weight
+
+                s2n_sum += (im**2 * wt).sum()
+
+        if s2n_sum < 0.0:
+            s2n_sum = 0.0
+
+        return np.sqrt(s2n_sum)
 
     def get_object_psf_stats(self, i):
         """
@@ -1248,6 +1261,7 @@ def make_bdf(half_light_radius=None,
     else:
         flux_untruncated = False
 
+    """
     bulge = galsim.DeVaucouleurs(
         half_light_radius=half_light_radius,
         flux=fracdev,
@@ -1255,6 +1269,16 @@ def make_bdf(half_light_radius=None,
         trunc=trunc,
         gsparams=gsparams,
     )
+    """
+    bulge = galsim.Sersic(
+        n=2,
+        half_light_radius=half_light_radius,
+        flux=fracdev,
+        flux_untruncated=flux_untruncated ,
+        trunc=trunc,
+        gsparams=gsparams,
+    )
+
     disk = galsim.Exponential(
         half_light_radius=half_light_radius,
         flux=(1-fracdev),
