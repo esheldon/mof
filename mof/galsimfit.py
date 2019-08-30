@@ -31,7 +31,8 @@ class KGSMOF(MOFStamps):
         """
         import galsim
 
-        self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
+        # self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
+        self._gsp = None
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
@@ -50,6 +51,10 @@ class KGSMOF(MOFStamps):
             # center1 + center2 + shape + hlr + fracdev + fluxes
             # for each object
             self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + 1 + self.nband)
+
+            # center1 + center2 + shape + fracdev + hlr/fluxes
+            # for each object
+            # self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + self.nband)
         else:
             self.npars_per = 5+self.nband
             self.nband_pars_per = 6
@@ -57,6 +62,9 @@ class KGSMOF(MOFStamps):
 
             # center1 + center2 + shape + hlr + fluxes for each object
             self.n_prior_pars = self.nobj*(1 + 1 + 1 + 1 + self.nband)
+
+            # center1 + center2 + shape + hlr/fluxes for each object
+            # self.n_prior_pars = self.nobj*(1 + 1 + 1 + self.nband)
 
         self.npars = self.nobj*self.npars_per
 
@@ -292,21 +300,27 @@ class KGSMOF(MOFStamps):
         make the round galsim model, unshifted
         """
 
+        # ngmix.print_pars(pars, front='pars in: ')
         kw = {}
-        hlr = 10.0**pars[4]
 
+        log10hlr = pars[4]
+        hlr = 10.0**log10hlr
+
+        """
         if self.model in ['bdf', 'dev']:
             # if hlr > self.max_dim_arcsec/2:
             if hlr > self.max_dim_arcsec/4:
                 kw['trunc'] = self.max_dim_arcsec*2
                 if self.model == 'dev':
                     kw['flux_untruncated'] = True
-
+        """
         if self.model == 'bdf':
             kw['fracdev'] = pars[5]
-            flux = pars[6]
+            log10flux = pars[6]
         else:
-            flux = pars[5]
+            log10flux = pars[5]
+
+        flux = 10.0**log10flux
 
         # this throws a generic runtime error so there is no way to tell what
         # went wrong
@@ -318,6 +332,7 @@ class KGSMOF(MOFStamps):
                 gsparams=self._gsp,
                 **kw
             )
+            # print(model)
         except RuntimeError as err:
             raise GMixRangeError(str(err))
 
