@@ -293,7 +293,7 @@ class KGSMOF(MOFStamps):
         """
 
         kw = {}
-        hlr = pars[4]
+        hlr = 10.0**pars[4]
 
         if self.model in ['bdf', 'dev']:
             # if hlr > self.max_dim_arcsec/2:
