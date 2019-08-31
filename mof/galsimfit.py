@@ -19,6 +19,7 @@ from .moflib import MOFStamps, DEFAULT_LM_PARS
 
 FOLDING_THRESHOLD = 0.05
 
+
 class KGSMOF(MOFStamps):
     """
     version using galsim for modelling, and doing convolutions by multiplying
@@ -29,10 +30,12 @@ class KGSMOF(MOFStamps):
         list_of_obs is not an ObsList, it is a python list of
         Observation/ObsList/MultiBandObsList
         """
-        import galsim
-
+        # import galsim
         # self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
+
         self._gsp = None
+
+        self.use_logpars = keys.get('use_logpars', False)
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
@@ -303,8 +306,9 @@ class KGSMOF(MOFStamps):
         # ngmix.print_pars(pars, front='pars in: ')
         kw = {}
 
-        log10hlr = pars[4]
-        hlr = 10.0**log10hlr
+        hlr = pars[4]
+        if self.use_logpars:
+            hlr = 10.0**hlr
 
         """
         if self.model in ['bdf', 'dev']:
@@ -316,11 +320,12 @@ class KGSMOF(MOFStamps):
         """
         if self.model == 'bdf':
             kw['fracdev'] = pars[5]
-            log10flux = pars[6]
+            flux = pars[6]
         else:
-            log10flux = pars[5]
+            flux = pars[5]
 
-        flux = 10.0**log10flux
+        if self.use_logpars:
+            flux = 10.0**flux
 
         # this throws a generic runtime error so there is no way to tell what
         # went wrong
@@ -438,7 +443,12 @@ class KGSMOF(MOFStamps):
         mbobs = self.list_of_obs[i]
         for band, obslist in enumerate(mbobs):
             for obsnum, obs in enumerate(obslist):
-                im = self.make_image(i, band=band, obsnum=obsnum, include_nbrs=False)
+                im = self.make_image(
+                    i,
+                    band=band,
+                    obsnum=obsnum,
+                    include_nbrs=False,
+                )
                 wt = obs.weight
 
                 s2n_sum += (im**2 * wt).sum()
@@ -732,6 +742,7 @@ class GSMOF(KGSMOF):
             offset=offset,
         )
 
+    '''
     def get_object_s2n(self, i):
         """
         TODO: implement for galsim
@@ -744,7 +755,12 @@ class GSMOF(KGSMOF):
         mbobs = self.list_of_obs[i]
         for band, obslist in enumerate(mbobs):
             for obsnum, obs in enumerate(obslist):
-                im = self.make_image(i, band=band, obsnum=obsnum, include_nbrs=False)
+                im = self.make_image(
+                    i,
+                    band=band,
+                    obsnum=obsnum,
+                    include_nbrs=False,
+                )
                 wt = obs.weight
 
                 s2n_sum += (im**2 * wt).sum()
@@ -753,6 +769,7 @@ class GSMOF(KGSMOF):
             s2n_sum = 0.0
 
         return np.sqrt(s2n_sum)
+    '''
 
     def _get_maxrad(self, obs):
         """
@@ -874,7 +891,6 @@ class GSMOF(KGSMOF):
             )
         else:
             total_model = central_model
-
 
         total_model = galsim.Convolve(
             total_model,
@@ -1153,8 +1169,10 @@ class GSMOFFluxReRender(GSMOF):
     flux only fitter
     """
     def __init__(self, list_of_obs, model, **keys):
+        # import galsim
+        # self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
 
-        self._gsp = galsim.GSParams(folding_threshold=FOLDING_THRESHOLD)
+        self._gsp = None
 
         self._set_all_obs(list_of_obs)
         self._setup_nbrs()
@@ -1291,7 +1309,7 @@ def make_bdf(half_light_radius=None,
         n=2,
         half_light_radius=half_light_radius,
         flux=fracdev,
-        flux_untruncated=flux_untruncated ,
+        flux_untruncated=flux_untruncated,
         trunc=trunc,
         gsparams=gsparams,
     )
