@@ -1,0 +1,4 @@
+# flags in MOFFlux
+GMIX_RANGE_ERROR = 2**0
+LIN_ALG_ERROR = 2**1
+DEBLENDED_AS_PSF = 2**2
