@@ -1433,7 +1433,7 @@ class MOFFlux(MOFStamps):
         res['psf_T'] = pres['T']
 
         res['nfev'] = 1
-        # res['s2n'] = self.get_object_s2n(i)
+        res['s2n'] = self.get_object_s2n(i)
 
         res['flux'] = all_res['flux'][i, :]
         res['flux_err'] = all_res['flux_err'][i, :]
