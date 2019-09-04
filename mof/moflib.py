@@ -31,6 +31,9 @@ from . import (
     priors,
     procflags,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 # weaker than usual
 DEFAULT_LM_PARS = {
@@ -1235,10 +1238,10 @@ class MOFFlux(MOFStamps):
                 flux_err[:, band] = band_res['flux_err']
 
             except GMixRangeError as err:
-                print(str(err))
+                logger.info(str(err))
                 flags[:, band] = procflags.GMIX_RANGE_ERROR
             except np.linalg.LinAlgError as err:
-                print(str(err))
+                logger.info(str(err))
                 flags[:, band] = procflags.LIN_ALG_ERROR
 
         self._result = {
@@ -1361,17 +1364,12 @@ class MOFFlux(MOFStamps):
                             pixels, model_array, start):
 
         for i in range(2):
-            # ngmix.print_pars(pars, front='pars: ')
             gm0._fill(pars)
-            # print('gm0 T:',gm0.get_T())
-            # print('psf_gm:',psf_gmix.get_g1g2T())
             ngmix.gmix_nb.gmix_convolve_fill(
                 gm._data,
                 gm0._data,
                 psf_gmix._data,
             )
-            # print('det:', gm._data['det'])
-            # print('T:', gm._data['irr'] + gm._data['icc'])
 
             try:
                 set_weighted_model(
@@ -1382,8 +1380,8 @@ class MOFFlux(MOFStamps):
                 )
                 break
             except GMixRangeError as err:
-                print(str(err))
-                print('trying zero size')
+                logger.info(str(err))
+                logger.info('trying zero size')
                 parsold = pars
                 pars = parsold.copy()
                 pars[4] = 0.0
@@ -1409,7 +1407,7 @@ class MOFFlux(MOFStamps):
             # now copy the flux
             pars[end] = input_pars[iobj, end+band]
         else:
-            print('    filling a star for missing pars')
+            logger.info('    deblending as psf: %d' % iobj)
             pars = np.zeros(self.nband_pars_per)
             pars[4] = 1.0e-5
 
@@ -1519,7 +1517,7 @@ class MOFFluxOld(MOFStamps):
             pars = meta['input_model_pars']
             pars = pars[0:self.nband_pars_per_full].copy()
         else:
-            print('    deblending as psf:', iobj)
+            logger.info('    deblending as psf: %d' % iobj)
             pars = np.zeros(self.nband_pars_per_full)
             pars[4] = 1.0e-5
 
