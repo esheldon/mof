@@ -1,10 +1,11 @@
-__version__ = 'v0.9.5'
+__version__ = 'v0.9.6'
 
 from . import moflib
 from .moflib import MOF, MOFStamps, MOFFlux
 from .galsimfit import GSMOF, KGSMOF
 
 from . import priors
+from . import procflags
 
 # test of big version
 from . import moftest

@@ -27,7 +27,10 @@ from ngmix.observation import (
 from ngmix.gmix import GMixList, MultiBandGMixList
 from ngmix.gexceptions import GMixRangeError
 from ngmix.priors import LOWVAL
-from . import priors
+from . import (
+    priors,
+    procflags,
+)
 
 # weaker than usual
 DEFAULT_LM_PARS = {
@@ -1233,10 +1236,10 @@ class MOFFlux(MOFStamps):
 
             except GMixRangeError as err:
                 print(str(err))
-                flags[:, band] = 1
+                flags[:, band] = procflags.GMIX_RANGE_ERROR
             except np.linalg.LinAlgError as err:
                 print(str(err))
-                flags[:, band] = 2
+                flags[:, band] = procflags.LIN_ALG_ERROR
 
         self._result = {
             'model': self.model_name,
@@ -1416,11 +1419,16 @@ class MOFFlux(MOFStamps):
         """
         get a result dict for a single object
         """
+
         pres = self.get_object_psf_stats(i)
 
         all_res = self._result
 
         res = {}
+
+        res['deblend_flags'] = 0
+        if self._input_flags is not None and self._input_flags[i] != 0:
+            res['deblend_flags'] = procflags.DEBLENDED_AS_PSF
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
@@ -1511,7 +1519,7 @@ class MOFFluxOld(MOFStamps):
             pars = meta['input_model_pars']
             pars = pars[0:self.nband_pars_per_full].copy()
         else:
-            print('    filling a star for missing pars')
+            print('    deblending as psf:', iobj)
             pars = np.zeros(self.nband_pars_per_full)
             pars[4] = 1.0e-5
 
