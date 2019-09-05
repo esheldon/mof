@@ -27,7 +27,13 @@ from ngmix.observation import (
 from ngmix.gmix import GMixList, MultiBandGMixList
 from ngmix.gexceptions import GMixRangeError
 from ngmix.priors import LOWVAL
-from . import priors
+from . import (
+    priors,
+    procflags,
+)
+import logging
+
+logger = logging.getLogger(__name__)
 
 # weaker than usual
 DEFAULT_LM_PARS = {
@@ -1174,6 +1180,15 @@ class MOFFlux(MOFStamps):
         else:
             gm0 = self.list_of_obs[index][band][0].meta['gmix0'].copy()
 
+            flux = self._result['flux'][index, band]
+            tpars = self.get_object_band_pars(
+                self._input_pars,
+                index,
+                band,
+            )
+            tpars[-1] = flux
+            gm0._fill(tpars)
+
         return gm0
 
     def _set_input_pars(self, pars, flags):
@@ -1232,11 +1247,11 @@ class MOFFlux(MOFStamps):
                 flux_err[:, band] = band_res['flux_err']
 
             except GMixRangeError as err:
-                print(str(err))
-                flags[:, band] = 1
+                logger.info(str(err))
+                flags[:, band] = procflags.GMIX_RANGE_ERROR
             except np.linalg.LinAlgError as err:
-                print(str(err))
-                flags[:, band] = 2
+                logger.info(str(err))
+                flags[:, band] = procflags.LIN_ALG_ERROR
 
         self._result = {
             'model': self.model_name,
@@ -1358,17 +1373,12 @@ class MOFFlux(MOFStamps):
                             pixels, model_array, start):
 
         for i in range(2):
-            # ngmix.print_pars(pars, front='pars: ')
             gm0._fill(pars)
-            # print('gm0 T:',gm0.get_T())
-            # print('psf_gm:',psf_gmix.get_g1g2T())
             ngmix.gmix_nb.gmix_convolve_fill(
                 gm._data,
                 gm0._data,
                 psf_gmix._data,
             )
-            # print('det:', gm._data['det'])
-            # print('T:', gm._data['irr'] + gm._data['icc'])
 
             try:
                 set_weighted_model(
@@ -1379,8 +1389,8 @@ class MOFFlux(MOFStamps):
                 )
                 break
             except GMixRangeError as err:
-                print(str(err))
-                print('trying zero size')
+                logger.info(str(err))
+                logger.info('trying zero size')
                 parsold = pars
                 pars = parsold.copy()
                 pars[4] = 0.0
@@ -1406,7 +1416,7 @@ class MOFFlux(MOFStamps):
             # now copy the flux
             pars[end] = input_pars[iobj, end+band]
         else:
-            print('    filling a star for missing pars')
+            logger.debug('    deblending as psf: %d' % iobj)
             pars = np.zeros(self.nband_pars_per)
             pars[4] = 1.0e-5
 
@@ -1416,18 +1426,23 @@ class MOFFlux(MOFStamps):
         """
         get a result dict for a single object
         """
+
         pres = self.get_object_psf_stats(i)
 
         all_res = self._result
 
         res = {}
 
+        res['deblend_flags'] = 0
+        if self._input_flags is not None and self._input_flags[i] != 0:
+            res['deblend_flags'] = procflags.DEBLENDED_AS_PSF
+
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
         res['nfev'] = 1
-        # res['s2n'] = self.get_object_s2n(i)
+        res['s2n'] = self.get_object_s2n(i)
 
         res['flux'] = all_res['flux'][i, :]
         res['flux_err'] = all_res['flux_err'][i, :]
@@ -1436,6 +1451,43 @@ class MOFFlux(MOFStamps):
         res['pars_cov'] = np.diag(res['flux_err']**2)
 
         return res
+
+    def make_image(self, index, band=0, obsnum=0, include_nbrs=False):
+        """
+        make an image for the given band and observation number
+        """
+        gm = self.get_convolved_gmix(index, band=band, obsnum=obsnum)
+        # print('central:', gm.get_flux(), gm.get_cen())
+        obs = self.list_of_obs[index][band][obsnum]
+        im = gm.make_image(obs.image.shape, jacobian=obs.jacobian)
+        # if 'q' == raw_input('q to quit'):
+        #     stop
+
+        if include_nbrs:
+            for nbr in obs.meta['nbr_data']:
+                nbr_pars = self.get_object_band_pars(
+                    self._input_pars,
+                    # pars,
+                    nbr['index'],
+                    band,
+                )
+                # the current pars [v,u,..] are relative to
+                # fiducial position.  we need to add these to
+                # the fiducial for the rendering within
+                # the stamp of the central
+                nbr_pars[0] += nbr['v0']
+                nbr_pars[1] += nbr['u0']
+                nflux = self._result['flux'][nbr['index'], band]
+                nbr_pars[-1] = nflux
+
+                ngm0 = self._make_model(nbr_pars)
+                ngm = ngm0.convolve(obs.psf.gmix)
+
+                # print('nbr:', ngm0.get_flux(), ngm0.get_cen())
+                nim = ngm.make_image(obs.image.shape, jacobian=obs.jacobian)
+                im += nim
+
+        return im
 
     def _set_totpix(self):
         """
@@ -1511,7 +1563,7 @@ class MOFFluxOld(MOFStamps):
             pars = meta['input_model_pars']
             pars = pars[0:self.nband_pars_per_full].copy()
         else:
-            print('    filling a star for missing pars')
+            logger.debug('    deblending as psf: %d' % iobj)
             pars = np.zeros(self.nband_pars_per_full)
             pars[4] = 1.0e-5
 
