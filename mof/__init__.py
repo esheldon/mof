@@ -1,4 +1,4 @@
-__version__ = 'v0.9.6'
+__version__ = 'v0.9.7'
 
 from . import moflib
 from .moflib import MOF, MOFStamps, MOFFlux

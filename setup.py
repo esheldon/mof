@@ -19,7 +19,7 @@ scripts=[os.path.join('bin',s) for s in scripts]
 setup(
     name="mof",
     packages=['mof', 'mof.tests'],
-    version="0.9.6",
+    version="0.9.7",
     scripts=scripts,
     cmdclass={'build_py': build_py},
 )

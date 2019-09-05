@@ -441,43 +441,49 @@ class MOF(LMSimple):
         """
         get a result dict for a single object
         """
-        pars = self._result['pars']
-        pars_cov = self._result['pars_cov']
-
-        pres = self.get_object_psf_stats(i)
+        all_res = self._result
 
         res = {}
+
+        pres = self.get_object_psf_stats(i)
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev'] = self._result['nfev']
-        res['s2n'] = self.get_object_s2n(i)
-        res['pars'] = self.get_object_pars(pars, i)
-        res['pars_cov'] = self.get_object_cov(pars_cov, i)
-        res['g'] = res['pars'][2:2+2].copy()
-        res['g_cov'] = res['pars_cov'][2:2+2, 2:2+2].copy()
-        res['T'] = res['pars'][4]
-        res['T_err'] = np.sqrt(res['pars_cov'][4, 4])
-        res['T_ratio'] = res['T']/res['psf_T']
+        res['flags'] = all_res['flags']
 
-        if self.model_name == 'bd':
-            res['logTratio'] = res['pars'][5]
-            res['logTratio_err'] = np.sqrt(res['pars_cov'][5, 5])
-            res['fracdev'] = res['pars'][6]
-            res['fracdev_err'] = np.sqrt(res['pars_cov'][6, 6])
-            flux_start = 7
-        elif self.model_name == 'bdf':
-            res['fracdev'] = res['pars'][5]
-            res['fracdev_err'] = np.sqrt(res['pars_cov'][5, 5])
-            flux_start = 6
-        else:
-            flux_start = 5
+        if all_res['flags'] == 0:
+            pars = self._result['pars']
+            pars_cov = self._result['pars_cov']
 
-        res['flux'] = res['pars'][flux_start:]
-        res['flux_cov'] = res['pars_cov'][flux_start:, flux_start:]
-        res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
+
+            res['nfev'] = self._result['nfev']
+            res['s2n'] = self.get_object_s2n(i)
+            res['pars'] = self.get_object_pars(pars, i)
+            res['pars_cov'] = self.get_object_cov(pars_cov, i)
+            res['g'] = res['pars'][2:2+2].copy()
+            res['g_cov'] = res['pars_cov'][2:2+2, 2:2+2].copy()
+            res['T'] = res['pars'][4]
+            res['T_err'] = np.sqrt(res['pars_cov'][4, 4])
+            res['T_ratio'] = res['T']/res['psf_T']
+
+            if self.model_name == 'bd':
+                res['logTratio'] = res['pars'][5]
+                res['logTratio_err'] = np.sqrt(res['pars_cov'][5, 5])
+                res['fracdev'] = res['pars'][6]
+                res['fracdev_err'] = np.sqrt(res['pars_cov'][6, 6])
+                flux_start = 7
+            elif self.model_name == 'bdf':
+                res['fracdev'] = res['pars'][5]
+                res['fracdev_err'] = np.sqrt(res['pars_cov'][5, 5])
+                flux_start = 6
+            else:
+                flux_start = 5
+
+            res['flux'] = res['pars'][flux_start:]
+            res['flux_cov'] = res['pars_cov'][flux_start:, flux_start:]
+            res['flux_err'] = np.sqrt(np.diag(res['flux_cov']))
 
         return res
 
@@ -1426,29 +1432,31 @@ class MOFFlux(MOFStamps):
         """
         get a result dict for a single object
         """
-
-        pres = self.get_object_psf_stats(i)
-
         all_res = self._result
 
         res = {}
 
-        res['deblend_flags'] = 0
-        if self._input_flags is not None and self._input_flags[i] != 0:
-            res['deblend_flags'] = procflags.DEBLENDED_AS_PSF
+        pres = self.get_object_psf_stats(i)
 
         res['nband'] = self.nband
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['nfev'] = 1
-        res['s2n'] = self.get_object_s2n(i)
+        res['flags'] = all_res['flags']
 
-        res['flux'] = all_res['flux'][i, :]
-        res['flux_err'] = all_res['flux_err'][i, :]
-        res['pars'] = res['flux'].copy()
-        res['pars_err'] = res['flux_err'].copy()
-        res['pars_cov'] = np.diag(res['flux_err']**2)
+        if all_res['flags'] == 0:
+            res['deblend_flags'] = 0
+            if self._input_flags is not None and self._input_flags[i] != 0:
+                res['deblend_flags'] = procflags.DEBLENDED_AS_PSF
+
+            res['nfev'] = 1
+            res['s2n'] = self.get_object_s2n(i)
+
+            res['flux'] = all_res['flux'][i, :]
+            res['flux_err'] = all_res['flux_err'][i, :]
+            res['pars'] = res['flux'].copy()
+            res['pars_err'] = res['flux_err'].copy()
+            res['pars_cov'] = np.diag(res['flux_err']**2)
 
         return res
 
