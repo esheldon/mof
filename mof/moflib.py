@@ -674,7 +674,14 @@ class MOFStamps(MOF):
         for band, obslist in enumerate(mbobs):
             for obsnum, obs in enumerate(obslist):
                 gm = self.get_convolved_gmix(i, band=band, obsnum=obsnum)
-                s2n_sum += gm.get_model_s2n_sum(obs)
+                try:
+                    s2n_sum += gm.get_model_s2n_sum(obs)
+                except GMixRangeError err:
+                    logger.info(str(err))
+                    logger.info('trying zero size for s2n')
+                    tgm = obs.psf.gmix.copy()
+                    tgm.set_flux(gm.get_flux())
+                    s2n_sum += tgm.get_model_s2n_sum(obs)
 
         return np.sqrt(s2n_sum)
 
