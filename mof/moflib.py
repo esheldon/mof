@@ -1442,9 +1442,9 @@ class MOFFlux(MOFStamps):
         res['psf_g'] = pres['g']
         res['psf_T'] = pres['T']
 
-        res['flags'] = all_res['flags']
+        res['flags'] = all_res['flags'][i]
 
-        if all_res['flags'] == 0:
+        if np.any(all_res['flags'] == 0):
             res['deblend_flags'] = 0
             if self._input_flags is not None and self._input_flags[i] != 0:
                 res['deblend_flags'] = procflags.DEBLENDED_AS_PSF
