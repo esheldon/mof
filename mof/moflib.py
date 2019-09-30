@@ -676,7 +676,7 @@ class MOFStamps(MOF):
                 gm = self.get_convolved_gmix(i, band=band, obsnum=obsnum)
                 try:
                     s2n_sum += gm.get_model_s2n_sum(obs)
-                except GMixRangeError err:
+                except GMixRangeError as err:
                     logger.info(str(err))
                     logger.info('trying zero size for s2n')
                     tgm = obs.psf.gmix.copy()
