@@ -78,7 +78,10 @@ fit_model: exp
 
 def _get_conf(nobj):
     conf = CONF_TEMPLATE.format(nobj=nobj)
-    return yaml.load(conf)
+    try:
+        return yaml.safe_load(conf)
+    except AttributeError:
+        return yaml.load(conf)
 
 
 def _test_nobj(nobj, seed, show=False):
@@ -94,7 +97,7 @@ def _test_nobj(nobj, seed, show=False):
     if show:
         import images
         images.view(sim.obs[0][0].image)
-        if raw_input('hit a key: (q to quit): ') == 'q':
+        if input('hit a key: (q to quit): ') == 'q':
             raise KeyboardInterrupt('stopping')
 
     fitrng = np.random.RandomState(sim.rng.randint(0, 2**15))
@@ -214,7 +217,6 @@ def test_err(ntrial=100, show=False):
     all_fluxes = np.array(all_fluxes)
     all_flux_errs = np.array(all_flux_errs)
 
-    import esutil as eu
     actual_std = all_fluxes.std()
     # am, actual_std = eu.stat.sigma_clip(all_fluxes)
     expected_std = all_flux_errs.mean()
