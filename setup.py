@@ -1,5 +1,4 @@
 import os
-import distutils
 from distutils.core import setup
 
 try:
@@ -10,11 +9,9 @@ except ImportError:
     from distutils.command.build_py import build_py
 
 
-scripts=[
-    'mof-test',
-]
+scripts = ['mof-test']
 
-scripts=[os.path.join('bin',s) for s in scripts]
+scripts = [os.path.join('bin', s) for s in scripts]
 
 setup(
     name="mof",
@@ -23,7 +20,3 @@ setup(
     scripts=scripts,
     cmdclass={'build_py': build_py},
 )
-
-
-
-

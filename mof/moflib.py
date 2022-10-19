@@ -457,7 +457,6 @@ class MOF(LMSimple):
             pars = self._result['pars']
             pars_cov = self._result['pars_cov']
 
-
             res['nfev'] = self._result['nfev']
             res['s2n'] = self.get_object_s2n(i)
             res['pars'] = self.get_object_pars(pars, i)

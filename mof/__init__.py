@@ -1,3 +1,5 @@
+# flake8: noqa
+
 __version__ = 'v0.9.10'
 
 from . import moflib

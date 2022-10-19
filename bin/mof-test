@@ -72,7 +72,10 @@ def main():
 
     print("seed:", args.seed)
     with open(args.config_file) as fobj:
-        config = yaml.load(fobj)
+        try:
+            config = yaml.safe_load(fobj)
+        except AttributeError:
+            config = yaml.load(fobj)
 
     nband = config['nband']
     assert nband == 1, '1 band for now'
